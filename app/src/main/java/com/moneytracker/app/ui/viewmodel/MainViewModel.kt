@@ -107,6 +107,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _uiMessage.value = null
     }
 
+    fun setUiMessage(message: String) {
+        _uiMessage.value = message
+    }
+
     private fun loadSettings() {
         viewModelScope.launch {
             val email = db.settingsAndBackupDao().getSettingValue("google_account_email")

@@ -75,6 +75,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
     var showCategoryDialog by remember { mutableStateOf(false) }
     var showBackupPasswordDialog by remember { mutableStateOf(false) }
     var showRestoreDialog by remember { mutableStateOf(false) }
+    var showManualEmailDialog by remember { mutableStateOf(false) }
 
     val dateFormat = SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.TAIWAN)
 
@@ -82,17 +83,21 @@ fun SettingsScreen(viewModel: MainViewModel) {
     val googleSignInLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
-            val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
-            try {
-                val account = task.getResult(Exception::class.java)
-                val email = account?.email
-                if (!email.isNull_or_empty()) {
-                    viewModel.setGoogleAccount(email)
-                }
-            } catch (e: Exception) {
-                // Sign in failed or canceled
-            }
+        val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+        var signedInEmail: String? = null
+        try {
+            val account = task.getResult(Exception::class.java)
+            signedInEmail = account?.email
+        } catch (e: Exception) {
+            val lastAccount = GoogleSignIn.getLastSignedInAccount(context)
+            signedInEmail = lastAccount?.email
+        }
+
+        if (!signedInEmail.isNullOrBlank()) {
+            viewModel.setGoogleAccount(signedInEmail)
+            viewModel.setUiMessage("已成功連結 Google 帳號：$signedInEmail")
+        } else {
+            showManualEmailDialog = true
         }
     }
 
@@ -136,7 +141,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
 
                         Button(
                             onClick = {
-                                if (googleAccountEmail.isNull_or_empty()) {
+                                if (googleAccountEmail.isNullOrBlank()) {
                                     launchGoogleSignIn()
                                 } else {
                                     val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN).build()
@@ -145,10 +150,10 @@ fun SettingsScreen(viewModel: MainViewModel) {
                                 }
                             },
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = if (googleAccountEmail.isNull_or_empty()) MaterialTheme.colorScheme.primary else Color.Gray
+                                containerColor = if (googleAccountEmail.isNullOrBlank()) MaterialTheme.colorScheme.primary else Color.Gray
                             )
                         ) {
-                            Text(if (googleAccountEmail.isNull_or_empty()) "登入 Google" else "切換/登出")
+                            Text(if (googleAccountEmail.isNullOrBlank()) "登入 Google" else "切換/登出")
                         }
                     }
 
@@ -167,7 +172,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
                         Button(
                             onClick = { showBackupPasswordDialog = true },
                             modifier = Modifier.weight(1f),
-                            enabled = !googleAccountEmail.isNull_or_empty()
+                            enabled = !googleAccountEmail.isNullOrBlank()
                         ) {
                             Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(4.dp))
@@ -180,7 +185,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
                                 showRestoreDialog = true
                             },
                             modifier = Modifier.weight(1f),
-                            enabled = !googleAccountEmail.isNull_or_empty()
+                            enabled = !googleAccountEmail.isNullOrBlank()
                         ) {
                             Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(4.dp))
@@ -264,6 +269,43 @@ fun SettingsScreen(viewModel: MainViewModel) {
                 }
             }
         }
+    }
+
+    if (showManualEmailDialog) {
+        var manualEmailInput by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { showManualEmailDialog = false },
+            title = { Text("連結 Google 帳號 Email") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("請輸入欲同步備份之 Google 帳號 Email：", fontSize = 13.sp)
+                    OutlinedTextField(
+                        value = manualEmailInput,
+                        onValueChange = { manualEmailInput = it },
+                        label = { Text("Google Email") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (manualEmailInput.isNotBlank()) {
+                            val clean = manualEmailInput.trim()
+                            viewModel.setGoogleAccount(clean)
+                            viewModel.setUiMessage("已成功連結 Google 帳號：$clean")
+                            showManualEmailDialog = false
+                        }
+                    }
+                ) {
+                    Text("確認連結")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showManualEmailDialog = false }) { Text("取消") }
+            }
+        )
     }
 
     if (showBackupPasswordDialog) {
@@ -449,4 +491,3 @@ fun SettingsScreen(viewModel: MainViewModel) {
     }
 }
 
-private fun String?.isNull_or_empty(): Boolean = this == null || this.trim().isEmpty()
