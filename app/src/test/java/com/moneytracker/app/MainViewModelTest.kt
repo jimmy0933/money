@@ -34,6 +34,9 @@ class MainViewModelTest {
         Dispatchers.setMain(testDispatcher)
         val context = ApplicationProvider.getApplicationContext<Context>() as android.app.Application
         viewModel = MainViewModel(context)
+        kotlinx.coroutines.runBlocking {
+            com.moneytracker.app.data.db.AppDatabase.seedDefaultData(viewModel.db)
+        }
     }
 
     @After
@@ -43,7 +46,7 @@ class MainViewModelTest {
 
     @Test
     fun testAddTransactionUpdatesState() = runTest {
-        val accounts = viewModel.accounts.first()
+        val accounts = viewModel.accounts.first { it.isNotEmpty() }
         val defaultAccount = accounts.first()
 
         viewModel.addTransaction(
@@ -57,13 +60,13 @@ class MainViewModelTest {
         )
         testDispatcher.scheduler.advanceUntilIdle()
 
-        val txs = viewModel.transactions.first()
+        val txs = viewModel.transactions.first { it.isNotEmpty() }
         assertTrue(txs.any { it.note == "測試 ViewModel 記帳" && it.amount == 150L })
     }
 
     @Test
     fun testMultipleLoansForSameContactAndBothTypes() = runTest {
-        val accounts = viewModel.accounts.first()
+        val accounts = viewModel.accounts.first { it.isNotEmpty() }
         val defaultAccount = accounts.first()
 
         // 借出 10,000 給小明
@@ -102,7 +105,7 @@ class MainViewModelTest {
         )
         testDispatcher.scheduler.advanceUntilIdle()
 
-        val summaries = viewModel.contactSummaries.first()
+        val summaries = viewModel.contactSummaries.first { it.isNotEmpty() }
         val xiaoming = summaries.find { it.contact.name == "小明" }
 
         assertNotNull(xiaoming)
@@ -117,7 +120,7 @@ class MainViewModelTest {
 
     @Test
     fun testOfflineBackupFailureDoesNotCorruptLocalData() = runTest {
-        val accounts = viewModel.accounts.first()
+        val accounts = viewModel.accounts.first { it.isNotEmpty() }
         val defaultAccount = accounts.first()
 
         // 新增資料
@@ -140,7 +143,7 @@ class MainViewModelTest {
         assertNotNull(msg)
 
         // 驗證本機資料依然完好無損
-        val txs = viewModel.transactions.first()
+        val txs = viewModel.transactions.first { it.isNotEmpty() }
         assertTrue(txs.any { it.note == "離線資料測試" })
     }
 }

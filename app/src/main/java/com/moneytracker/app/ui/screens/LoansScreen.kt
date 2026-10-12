@@ -389,7 +389,7 @@ fun LoanDetailView(
                                     Text(repayment.note, fontSize = 13.sp)
                                 }
                             }
-                            IconButton(onClick = { viewModel.repository.apply { runBlocking { deleteRepayment(repayment.id) } } }) {
+                            IconButton(onClick = { viewModel.deleteLoanRepayment(repayment.id) }) {
                                 Icon(Icons.Default.Delete, contentDescription = "刪除還款", tint = Color.Gray)
                             }
                         }
