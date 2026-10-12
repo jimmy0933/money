@@ -257,4 +257,34 @@ class RoomDatabaseTest {
         assertEquals(5000L, loanDetails!!.remainingAmount)
         assertEquals(LoanStatus.UNPAID, loanDetails.loan.status)
     }
+
+    @Test
+    fun testDeleteLoanCleansUpRepaymentsAndRestoresBalance() = runBlocking {
+        val accountId = repository.insertAccount(
+            AccountEntity(name = "現金", type = AccountType.CASH, initialBalance = 10000)
+        )
+
+        val loanId = repository.createLoanTransaction(
+            contactName = "張三",
+            type = LoanType.LEND,
+            amount = 4000,
+            dateMillis = System.currentTimeMillis(),
+            dueDateMillis = null,
+            accountId = accountId,
+            note = "借給張三"
+        )
+
+        // 借出 4000 -> 餘額 6000
+        assertEquals(6000L, repository.calculateAccountBalance(accountId))
+
+        // 張三還款 1500 -> 餘額 7500
+        repository.addRepayment(loanId, 1500, System.currentTimeMillis(), accountId, "部分還款")
+        assertEquals(7500L, repository.calculateAccountBalance(accountId))
+
+        // 刪除該筆借貸
+        repository.deleteLoan(loanId)
+
+        // 刪除借貸後，相關借出金流與還款金流都應全數軟刪除，帳戶餘額應回復為初始的 10000
+        assertEquals(10000L, repository.calculateAccountBalance(accountId))
+    }
 }

@@ -96,6 +96,8 @@ dependencies {
 
     // Test
     testImplementation(libs.junit)
+    testImplementation(libs.androidx.junit)
+    testImplementation("androidx.test:core-ktx:1.6.1")
     testImplementation(libs.robolectric)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.androidx.room.testing)
@@ -105,4 +107,8 @@ dependencies {
     androidTestImplementation(libs.androidx.ui.test.manifest)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
+}
+
+tasks.named("build") {
+    dependsOn(tasks.named("assemble"))
 }
