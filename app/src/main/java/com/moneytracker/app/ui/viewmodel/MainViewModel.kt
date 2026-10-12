@@ -17,6 +17,7 @@ import com.moneytracker.app.data.repository.AccountWithBalance
 import com.moneytracker.app.data.repository.AppRepository
 import com.moneytracker.app.data.repository.ContactSummary
 import com.moneytracker.app.data.repository.LoanWithDetails
+import com.moneytracker.app.worker.BackupWorker
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -52,38 +53,38 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     // Home Flow States
     val monthlyIncome: StateFlow<Long> = repository.getIncomeSumBetweenFlow(startOfMonth, endOfMonth)
-        .stateIn(viewModelScope, SharingStarted.WhileSubsubscribed(5000), 0L)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0L)
 
     val monthlyExpense: StateFlow<Long> = repository.getExpenseSumBetweenFlow(startOfMonth, endOfMonth)
-        .stateIn(viewModelScope, SharingStarted.WhileSubsubscribed(5000), 0L)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0L)
 
     val accountsWithBalance: StateFlow<List<AccountWithBalance>> = repository.getAllAccountsWithBalanceFlow()
-        .stateIn(viewModelScope, SharingStarted.WhileSubsubscribed(5000), emptyList())
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val totalAccountBalance: StateFlow<Long> = accountsWithBalance.combine(accountsWithBalance) { list, _ ->
         list.sumOf { it.currentBalance }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubsubscribed(5000), 0L)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0L)
 
     val outstandingLendTotal: StateFlow<Long> = repository.getOutstandingLendTotalFlow()
-        .stateIn(viewModelScope, SharingStarted.WhileSubsubscribed(5000), 0L)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0L)
 
     val outstandingBorrowTotal: StateFlow<Long> = repository.getOutstandingBorrowTotalFlow()
-        .stateIn(viewModelScope, SharingStarted.WhileSubsubscribed(5000), 0L)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0L)
 
     val transactions: StateFlow<List<TransactionEntity>> = repository.getAllTransactionsFlow()
-        .stateIn(viewModelScope, SharingStarted.WhileSubsubscribed(5000), emptyList())
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val categories: StateFlow<List<CategoryEntity>> = repository.getAllCategoriesFlow()
-        .stateIn(viewModelScope, SharingStarted.WhileSubsubscribed(5000), emptyList())
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val accounts: StateFlow<List<AccountEntity>> = repository.getAllAccountsFlow()
-        .stateIn(viewModelScope, SharingStarted.WhileSubsubscribed(5000), emptyList())
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val loansWithDetails: StateFlow<List<LoanWithDetails>> = repository.getAllLoansWithDetailsFlow()
-        .stateIn(viewModelScope, SharingStarted.WhileSubsubscribed(5000), emptyList())
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val contactSummaries: StateFlow<List<ContactSummary>> = repository.getContactSummariesFlow()
-        .stateIn(viewModelScope, SharingStarted.WhileSubsubscribed(5000), emptyList())
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Settings / Backup State
     private val _googleAccountEmail = MutableStateFlow<String?>(null)
@@ -108,7 +109,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun loadSettings() {
         viewModelScope.launch {
-            _googleAccountEmail.value = db.settingsAndBackupDao().getSettingValue("google_account_email")
+            val email = db.settingsAndBackupDao().getSettingValue("google_account_email")
+            val cleanEmail = if (email.isNullOrBlank()) null else email
+            _googleAccountEmail.value = cleanEmail
+
+            if (cleanEmail != null) {
+                BackupWorker.schedulePeriodicBackup(getApplication())
+            }
+
             val lastTimeStr = db.settingsAndBackupDao().getSettingValue("last_backup_time")
             _lastBackupTime.value = lastTimeStr?.toLongOrNull()
         }
@@ -116,12 +124,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setGoogleAccount(email: String?) {
         viewModelScope.launch {
-            if (email != null) {
-                db.settingsAndBackupDao().setSettingValue(AppSettingsEntity("google_account_email", email))
+            val cleanEmail = if (email.isNullOrBlank()) null else email.trim()
+            if (cleanEmail != null) {
+                db.settingsAndBackupDao().setSettingValue(AppSettingsEntity("google_account_email", cleanEmail))
+                BackupWorker.schedulePeriodicBackup(getApplication())
             } else {
                 db.settingsAndBackupDao().setSettingValue(AppSettingsEntity("google_account_email", ""))
+                BackupWorker.cancelPeriodicBackup(getApplication())
             }
-            _googleAccountEmail.value = email
+            _googleAccountEmail.value = cleanEmail
         }
     }
 
@@ -205,10 +216,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun deleteLoanRepayment(repaymentId: Long) {
+        viewModelScope.launch {
+            repository.deleteRepayment(repaymentId)
+            _uiMessage.value = "已刪除還款紀錄"
+        }
+    }
+
     fun performBackup(password: String?) {
         viewModelScope.launch {
             val email = _googleAccountEmail.value
-            if (email.isNull_or_empty()) {
+            if (email.isNullOrEmpty()) {
                 _uiMessage.value = "請先連動 Google 帳號"
                 return@launch
             }
@@ -229,7 +247,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun fetchCloudBackups() {
         viewModelScope.launch {
             val email = _googleAccountEmail.value
-            if (email.isNull_or_empty()) return@launch
+            if (email.isNullOrEmpty()) return@launch
 
             val driveManager = GoogleDriveManager(getApplication(), email)
             val backupRepo = BackupRestoreRepository(db, driveManager)
@@ -246,7 +264,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun restoreCloudBackup(fileId: String, password: String?) {
         viewModelScope.launch {
             val email = _googleAccountEmail.value
-            if (email.isNull_or_empty()) return@launch
+            if (email.isNullOrEmpty()) return@launch
 
             val driveManager = GoogleDriveManager(getApplication(), email)
             val backupRepo = BackupRestoreRepository(db, driveManager)
@@ -274,5 +292,4 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun String?.isNull_or_empty(): Boolean = this == null || this.trim().isEmpty()
 }

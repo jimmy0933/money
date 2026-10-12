@@ -22,8 +22,7 @@ class BackupWorker(
         val db = AppDatabase.getDatabase(applicationContext)
         val googleAccount = db.settingsAndBackupDao().getSettingValue("google_account_email")
 
-        if (googleAccount.isNull_or_empty()) {
-            // 未登入 Google 帳號，跳過備份
+        if (googleAccount.isNullOrEmpty()) {
             return Result.success()
         }
 
@@ -59,7 +58,10 @@ class BackupWorker(
                 request
             )
         }
+
+        fun cancelPeriodicBackup(context: Context) {
+            WorkManager.getInstance(context).cancelUniqueWork(WORK_NAME)
+        }
     }
 
-    private fun String?.isNull_or_empty(): Boolean = this == null || this.isEmpty()
 }

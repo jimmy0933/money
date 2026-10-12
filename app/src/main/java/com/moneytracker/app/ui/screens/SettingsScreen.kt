@@ -1,5 +1,8 @@
 package com.moneytracker.app.ui.screens
 
+import android.app.Activity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -9,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -20,14 +24,11 @@ import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudUpload
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Login
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -44,9 +45,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.common.api.Scope
+import com.google.api.services.drive.DriveScopes
 import com.moneytracker.app.data.model.AccountType
 import com.moneytracker.app.data.model.TransactionType
 import com.moneytracker.app.ui.viewmodel.MainViewModel
@@ -57,6 +63,7 @@ import java.util.Locale
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(viewModel: MainViewModel) {
+    val context = LocalContext.current
     val googleAccountEmail by viewModel.googleAccountEmail.collectAsState()
     val lastBackupTime by viewModel.lastBackupTime.collectAsState()
     val cloudBackups by viewModel.cloudBackups.collectAsState()
@@ -66,11 +73,37 @@ fun SettingsScreen(viewModel: MainViewModel) {
 
     var showAccountDialog by remember { mutableStateOf(false) }
     var showCategoryDialog by remember { mutableStateOf(false) }
-    var showLoginDialog by remember { mutableStateOf(false) }
     var showBackupPasswordDialog by remember { mutableStateOf(false) }
     var showRestoreDialog by remember { mutableStateOf(false) }
 
     val dateFormat = SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.TAIWAN)
+
+    // Google Sign-In Activity Result Launcher
+    val googleSignInLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+            try {
+                val account = task.getResult(Exception::class.java)
+                val email = account?.email
+                if (!email.isNull_or_empty()) {
+                    viewModel.setGoogleAccount(email)
+                }
+            } catch (e: Exception) {
+                // Sign in failed or canceled
+            }
+        }
+    }
+
+    fun launchGoogleSignIn() {
+        val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+            .requestEmail()
+            .requestScopes(Scope(DriveScopes.DRIVE_APPDATA), Scope(DriveScopes.DRIVE_FILE))
+            .build()
+        val client = GoogleSignIn.getClient(context, gso)
+        googleSignInLauncher.launch(client.signInIntent)
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -104,8 +137,10 @@ fun SettingsScreen(viewModel: MainViewModel) {
                         Button(
                             onClick = {
                                 if (googleAccountEmail.isNull_or_empty()) {
-                                    showLoginDialog = true
+                                    launchGoogleSignIn()
                                 } else {
+                                    val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN).build()
+                                    GoogleSignIn.getClient(context, gso).signOut()
                                     viewModel.setGoogleAccount(null)
                                 }
                             },
@@ -229,41 +264,6 @@ fun SettingsScreen(viewModel: MainViewModel) {
                 }
             }
         }
-    }
-
-    if (showLoginDialog) {
-        var emailInput by remember { mutableStateOf("") }
-        AlertDialog(
-            onDismissRequest = { showLoginDialog = false },
-            title = { Text("登入 Google 帳號") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("請輸入欲同步備份之 Google 帳號 Email：", fontSize = 13.sp)
-                    OutlinedTextField(
-                        value = emailInput,
-                        onValueChange = { emailInput = it },
-                        label = { Text("Google Email") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        if (emailInput.isNotBlank()) {
-                            viewModel.setGoogleAccount(emailInput.trim())
-                            showLoginDialog = false
-                        }
-                    }
-                ) {
-                    Text("確認登入")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showLoginDialog = false }) { Text("取消") }
-            }
-        )
     }
 
     if (showBackupPasswordDialog) {
