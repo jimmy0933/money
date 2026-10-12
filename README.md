@@ -86,7 +86,29 @@
 
 ---
 
-## 五、預覽與畫面截圖
+## 五、GitHub Actions CI/CD 與 APK 下載
+
+本專案配置有 GitHub Actions 工作流程 `.github/workflows/build-apk.yml`：
+
+### 1. 自動觸發機制
+* **PR 自動驗證**: 當有 Pull Request 指向 `master` 分支時，自動觸發單元測試與 APK 建置。
+* **合併/推送自動建置**: 當程式碼合併或直接推送到 `master` 分支時，自動建置並產出最新 APK。
+
+### 2. 手動觸發建置 (`workflow_dispatch`)
+1. 前往專案的 GitHub Repository 頁面，點選 **Actions** 頁籤。
+2. 在左側工作流程清單中選擇 **Build & Package Android APK**。
+3. 點擊右側的 **Run workflow** 按鈕，選擇分支並點擊確認執行。
+
+### 3. 下載 APK Artifacts、校驗碼與測試報告
+1. 進入任何一次執行的 Action Run 詳情頁面。
+2. 捲動至頁面底部的 **Artifacts** 區塊：
+   * **`app-debug-apk-<commit-sha>`**: 包含檔名標示有 commit 短碼之 Debug APK（如 `app-debug-a1b2c3d.apk`）與 SHA-256 校驗碼檔案（如 `app-debug-a1b2c3d.apk.sha256`）。
+   * **`test-report-<commit-sha>`**: 包含單元測試報告（HTML / XML 格式）。
+3. Artifacts 保留期限為 30 天。若測試失敗，產物仍會保留備查與下載。
+
+---
+
+## 六、預覽與畫面截圖
 
 * **首頁 (Home)**: 收支總覽、帳戶餘額、待收/待還金額與最近交易紀錄。
 * **記帳頁 (Transactions)**: 交易明細、月份/分類/關鍵字篩選與快速記帳數字鍵盤。
