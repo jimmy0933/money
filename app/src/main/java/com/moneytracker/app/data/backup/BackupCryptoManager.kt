@@ -2,6 +2,7 @@ package com.moneytracker.app.data.backup
 
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
+import androidx.room.withTransaction
 import com.moneytracker.app.data.db.AppDatabase
 import com.moneytracker.app.data.entity.AccountEntity
 import com.moneytracker.app.data.entity.CategoryEntity
@@ -33,17 +34,19 @@ object BackupCryptoManager {
     }
 
     suspend fun createBackupPayload(db: AppDatabase): BackupPayload {
-        return BackupPayload(
-            schemaVersion = 1,
-            createdAt = System.currentTimeMillis(),
-            accounts = db.accountDao().getAllAccounts(),
-            categories = db.categoryDao().getAllCategories(),
-            transactions = db.transactionDao().getAllTransactions(),
-            contacts = db.contactDao().getAllContacts(),
-            loans = db.loanDao().getAllLoans(),
-            loanRepayments = db.loanRepaymentDao().getAllRepayments(),
-            settings = emptyList()
-        )
+        return db.withTransaction {
+            BackupPayload(
+                schemaVersion = 1,
+                createdAt = System.currentTimeMillis(),
+                accounts = db.accountDao().getAllAccounts(),
+                categories = db.categoryDao().getAllCategories(),
+                transactions = db.transactionDao().getAllTransactions(),
+                contacts = db.contactDao().getAllContacts(),
+                loans = db.loanDao().getAllLoans(),
+                loanRepayments = db.loanRepaymentDao().getAllRepayments(),
+                settings = emptyList()
+            )
+        }
     }
 
     fun serializeAndEncryptPayload(payload: BackupPayload, password: String?): ByteArray {
@@ -65,12 +68,13 @@ object BackupCryptoManager {
         }
 
         val jsonString = String(rawBytes, Charsets.UTF_8)
-        val payload = gson.fromJson(jsonString, BackupPayload::class.java)
-            ?: throw IllegalArgumentException("無效的備份 JSON 格式")
+        val payload = try {
+            gson.fromJson(jsonString, BackupPayload::class.java)
+        } catch (e: Exception) {
+            throw IllegalArgumentException("無效的備份 JSON 格式: ${e.message}")
+        } ?: throw IllegalArgumentException("無效的備份 JSON 格式")
 
-        if (payload.schemaVersion > 1) {
-            throw IllegalArgumentException("不支援的備份版本: ${payload.schemaVersion}")
-        }
+        BackupPayloadValidator.validate(payload)
 
         return payload
     }

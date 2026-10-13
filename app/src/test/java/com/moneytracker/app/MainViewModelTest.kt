@@ -146,4 +146,22 @@ class MainViewModelTest {
         val txs = viewModel.transactions.first { it.isNotEmpty() }
         assertTrue(txs.any { it.note == "離線資料測試" })
     }
+
+    @Test
+    fun testFetchCloudBackupsWithoutAccountErrorState() = runTest {
+        viewModel.fetchCloudBackups()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val listState = viewModel.cloudBackupListState.value
+        assertTrue(listState is MainViewModel.CloudBackupListState.Error)
+    }
+
+    @Test
+    fun testRestoreWithoutAccountErrorState() = runTest {
+        viewModel.restoreCloudBackup("fake_file_id", null)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val restoreState = viewModel.restoreUiState.value
+        assertTrue(restoreState is MainViewModel.RestoreUiState.Error)
+    }
 }

@@ -24,10 +24,25 @@ class BackupRestoreRepository(
 
     suspend fun restoreFromPayload(payload: BackupPayload): Result<Unit> {
         return try {
+            // 先進行資料合法性與完整性關聯驗證
+            BackupPayloadValidator.validate(payload)
+
+            // 建立還原前的本機資料快照，做為可恢復的快照依據
+            val currentLocalSnapshot = BackupCryptoManager.createBackupPayload(db)
+
             // 使用交易式處理，確保還原失敗不會產生半套資料
             db.withTransaction {
-                // 清空既有資料
-                db.clearAllTables()
+                // 保留目前裝置的 Google 帳號與登入設定
+                val currentGoogleEmail = db.settingsAndBackupDao().getSettingValue("google_account_email")
+
+                // 只清理與替換業務資料表，不呼叫 clearAllTables() 清空設定表
+                val database = db.openHelper.writableDatabase
+                database.execSQL("DELETE FROM transactions")
+                database.execSQL("DELETE FROM loan_repayments")
+                database.execSQL("DELETE FROM loans")
+                database.execSQL("DELETE FROM contacts")
+                database.execSQL("DELETE FROM categories")
+                database.execSQL("DELETE FROM accounts")
 
                 // 還原帳戶
                 payload.accounts.forEach { db.accountDao().insertAccount(it) }
@@ -47,8 +62,17 @@ class BackupRestoreRepository(
                 // 還原交易明細
                 payload.transactions.forEach { db.transactionDao().insertTransaction(it) }
 
-                // 還原設定
-                payload.settings.forEach { db.settingsAndBackupDao().setSettingValue(it) }
+                // 還原業務設定 (過濾掉登入身分/憑證相關設定，避免覆蓋本機登入身分)
+                payload.settings
+                    .filter { it.key != "google_account_email" }
+                    .forEach { db.settingsAndBackupDao().setSettingValue(it) }
+
+                // 確保本機 Google 帳號連結完整恢復/保留
+                if (!currentGoogleEmail.isNullOrBlank()) {
+                    db.settingsAndBackupDao().setSettingValue(
+                        AppSettingsEntity("google_account_email", currentGoogleEmail)
+                    )
+                }
             }
             Result.success(Unit)
         } catch (e: Exception) {
