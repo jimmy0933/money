@@ -86,9 +86,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val contactSummaries: StateFlow<List<ContactSummary>> = repository.getContactSummariesFlow()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    enum class GoogleAuthState {
+        LOGGED_OUT,
+        LOGGING_IN,
+        LOGGED_IN,
+        FAILED
+    }
+
     // Settings / Backup State
     private val _googleAccountEmail = MutableStateFlow<String?>(null)
     val googleAccountEmail: StateFlow<String?> = _googleAccountEmail.asStateFlow()
+
+    private val _googleAuthState = MutableStateFlow(GoogleAuthState.LOGGED_OUT)
+    val googleAuthState: StateFlow<GoogleAuthState> = _googleAuthState.asStateFlow()
+
+    private val _googleAuthErrorMessage = MutableStateFlow<String?>(null)
+    val googleAuthErrorMessage: StateFlow<String?> = _googleAuthErrorMessage.asStateFlow()
 
     private val _lastBackupTime = MutableStateFlow<Long?>(null)
     val lastBackupTime: StateFlow<Long?> = _lastBackupTime.asStateFlow()
@@ -118,7 +131,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _googleAccountEmail.value = cleanEmail
 
             if (cleanEmail != null) {
+                _googleAuthState.value = GoogleAuthState.LOGGED_IN
                 BackupWorker.schedulePeriodicBackup(getApplication())
+            } else {
+                _googleAuthState.value = GoogleAuthState.LOGGED_OUT
             }
 
             val lastTimeStr = db.settingsAndBackupDao().getSettingValue("last_backup_time")
@@ -126,17 +142,53 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun setGoogleAccount(email: String?) {
+    fun startGoogleSignIn() {
+        _googleAuthState.value = GoogleAuthState.LOGGING_IN
+        _googleAuthErrorMessage.value = null
+    }
+
+    fun onGoogleSignInSuccess(email: String) {
         viewModelScope.launch {
-            val cleanEmail = if (email.isNullOrBlank()) null else email.trim()
-            if (cleanEmail != null) {
-                db.settingsAndBackupDao().setSettingValue(AppSettingsEntity("google_account_email", cleanEmail))
-                BackupWorker.schedulePeriodicBackup(getApplication())
-            } else {
-                db.settingsAndBackupDao().setSettingValue(AppSettingsEntity("google_account_email", ""))
-                BackupWorker.cancelPeriodicBackup(getApplication())
-            }
+            val cleanEmail = email.trim()
+            db.settingsAndBackupDao().setSettingValue(AppSettingsEntity("google_account_email", cleanEmail))
+            BackupWorker.schedulePeriodicBackup(getApplication())
             _googleAccountEmail.value = cleanEmail
+            _googleAuthState.value = GoogleAuthState.LOGGED_IN
+            _googleAuthErrorMessage.value = null
+            _uiMessage.value = "已成功連結 Google 帳號：$cleanEmail"
+        }
+    }
+
+    fun onGoogleSignInFailure(statusCode: Int?, rawErrorMsg: String?) {
+        _googleAuthState.value = GoogleAuthState.FAILED
+        val userMsg = when (statusCode) {
+            10 -> "Google 登入失敗 (錯誤碼: 10 DEVELOPER_ERROR)：請確認 Google Cloud Console 上此 App 包名 (com.moneytracker.app) 與 SHA-1 簽章指紋配置正確。"
+            12500 -> "Google 登入失敗 (錯誤碼: 12500)：請確認裝置已安裝且更新 Google Play 服務，並已啟用 OAuth。"
+            12501, 16 -> "登入已取消"
+            else -> "Google 登入失敗 (${statusCode?.let { "錯誤碼: $it" } ?: "未知錯誤"})：${rawErrorMsg ?: "存取授權失敗"}"
+        }
+        _googleAuthErrorMessage.value = userMsg
+        _uiMessage.value = userMsg
+    }
+
+    fun signOutGoogleAccount() {
+        viewModelScope.launch {
+            db.settingsAndBackupDao().setSettingValue(AppSettingsEntity("google_account_email", ""))
+            BackupWorker.cancelPeriodicBackup(getApplication())
+            _googleAccountEmail.value = null
+            _cloudBackups.value = emptyList()
+            _lastBackupTime.value = null
+            _googleAuthState.value = GoogleAuthState.LOGGED_OUT
+            _googleAuthErrorMessage.value = null
+            _uiMessage.value = "已登出 Google 帳號，並清空雲端備份歷史對照"
+        }
+    }
+
+    fun setGoogleAccount(email: String?) {
+        if (email.isNullOrBlank()) {
+            signOutGoogleAccount()
+        } else {
+            onGoogleSignInSuccess(email)
         }
     }
 

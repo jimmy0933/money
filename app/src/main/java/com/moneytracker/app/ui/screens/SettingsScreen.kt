@@ -65,6 +65,8 @@ import java.util.Locale
 fun SettingsScreen(viewModel: MainViewModel) {
     val context = LocalContext.current
     val googleAccountEmail by viewModel.googleAccountEmail.collectAsState()
+    val googleAuthState by viewModel.googleAuthState.collectAsState()
+    val googleAuthErrorMessage by viewModel.googleAuthErrorMessage.collectAsState()
     val lastBackupTime by viewModel.lastBackupTime.collectAsState()
     val cloudBackups by viewModel.cloudBackups.collectAsState()
 
@@ -75,7 +77,6 @@ fun SettingsScreen(viewModel: MainViewModel) {
     var showCategoryDialog by remember { mutableStateOf(false) }
     var showBackupPasswordDialog by remember { mutableStateOf(false) }
     var showRestoreDialog by remember { mutableStateOf(false) }
-    var showManualEmailDialog by remember { mutableStateOf(false) }
 
     val dateFormat = SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.TAIWAN)
 
@@ -84,24 +85,42 @@ fun SettingsScreen(viewModel: MainViewModel) {
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
         val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
-        var signedInEmail: String? = null
         try {
-            val account = task.getResult(Exception::class.java)
-            signedInEmail = account?.email
-        } catch (e: Exception) {
-            val lastAccount = GoogleSignIn.getLastSignedInAccount(context)
-            signedInEmail = lastAccount?.email
-        }
+            val account = task.getResult(com.google.android.gms.common.api.ApiException::class.java)
+            val email = account?.email
+            val hasDrivePermission = GoogleSignIn.hasPermissions(
+                account,
+                Scope(DriveScopes.DRIVE_APPDATA),
+                Scope(DriveScopes.DRIVE_FILE)
+            )
 
-        if (!signedInEmail.isNullOrBlank()) {
-            viewModel.setGoogleAccount(signedInEmail)
-            viewModel.setUiMessage("已成功連結 Google 帳號：$signedInEmail")
-        } else {
-            showManualEmailDialog = true
+            if (!email.isNullOrBlank() && hasDrivePermission) {
+                viewModel.onGoogleSignInSuccess(email)
+            } else if (!email.isNullOrBlank()) {
+                if (context is Activity) {
+                    GoogleSignIn.requestPermissions(
+                        context,
+                        1001,
+                        account,
+                        Scope(DriveScopes.DRIVE_APPDATA),
+                        Scope(DriveScopes.DRIVE_FILE)
+                    )
+                }
+                viewModel.onGoogleSignInFailure(null, "尚未授予 Google Drive 存取權限，請確認授權後重試")
+            } else {
+                viewModel.onGoogleSignInFailure(null, "未取得 Google 帳號 Email")
+            }
+        } catch (e: com.google.android.gms.common.api.ApiException) {
+            viewModel.onGoogleSignInFailure(e.statusCode, e.message)
+        } catch (e: Exception) {
+            viewModel.onGoogleSignInFailure(null, e.message)
         }
     }
 
     fun launchGoogleSignIn() {
+        if (googleAuthState == MainViewModel.GoogleAuthState.LOGGING_IN) return
+        viewModel.startGoogleSignIn()
+
         val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
             .requestEmail()
             .requestScopes(Scope(DriveScopes.DRIVE_APPDATA), Scope(DriveScopes.DRIVE_FILE))
@@ -146,14 +165,21 @@ fun SettingsScreen(viewModel: MainViewModel) {
                                 } else {
                                     val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN).build()
                                     GoogleSignIn.getClient(context, gso).signOut()
-                                    viewModel.setGoogleAccount(null)
+                                    viewModel.signOutGoogleAccount()
                                 }
                             },
+                            enabled = googleAuthState != MainViewModel.GoogleAuthState.LOGGING_IN,
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = if (googleAccountEmail.isNullOrBlank()) MaterialTheme.colorScheme.primary else Color.Gray
                             )
                         ) {
-                            Text(if (googleAccountEmail.isNullOrBlank()) "登入 Google" else "切換/登出")
+                            Text(
+                                when (googleAuthState) {
+                                    MainViewModel.GoogleAuthState.LOGGING_IN -> "登入中..."
+                                    MainViewModel.GoogleAuthState.LOGGED_IN -> "切換/登出"
+                                    else -> "登入 Google"
+                                }
+                            )
                         }
                     }
 
@@ -162,6 +188,16 @@ fun SettingsScreen(viewModel: MainViewModel) {
 
                     val timeStr = if (lastBackupTime != null) dateFormat.format(Date(lastBackupTime!!)) else "尚無備份"
                     Text("上次成功備份時間: $timeStr", fontSize = 13.sp, color = Color.Gray)
+
+                    if (!googleAuthErrorMessage.isNullOrBlank()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = googleAuthErrorMessage!!,
+                            color = MaterialTheme.colorScheme.error,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
 
                     Spacer(modifier = Modifier.height(12.dp))
 
@@ -269,43 +305,6 @@ fun SettingsScreen(viewModel: MainViewModel) {
                 }
             }
         }
-    }
-
-    if (showManualEmailDialog) {
-        var manualEmailInput by remember { mutableStateOf("") }
-        AlertDialog(
-            onDismissRequest = { showManualEmailDialog = false },
-            title = { Text("連結 Google 帳號 Email") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("請輸入欲同步備份之 Google 帳號 Email：", fontSize = 13.sp)
-                    OutlinedTextField(
-                        value = manualEmailInput,
-                        onValueChange = { manualEmailInput = it },
-                        label = { Text("Google Email") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        if (manualEmailInput.isNotBlank()) {
-                            val clean = manualEmailInput.trim()
-                            viewModel.setGoogleAccount(clean)
-                            viewModel.setUiMessage("已成功連結 Google 帳號：$clean")
-                            showManualEmailDialog = false
-                        }
-                    }
-                ) {
-                    Text("確認連結")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showManualEmailDialog = false }) { Text("取消") }
-            }
-        )
     }
 
     if (showBackupPasswordDialog) {
