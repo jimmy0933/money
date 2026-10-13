@@ -39,16 +39,19 @@ jobs:
             echo "KEYSTORE_PASSWORD=${{ secrets.KEYSTORE_PASSWORD }}" >> $GITHUB_ENV
             echo "KEY_ALIAS=${{ secrets.KEY_ALIAS }}" >> $GITHUB_ENV
             echo "KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> $GITHUB_ENV
+            echo "SIGNING_STATUS=固定 KeyStore 簽署 (Release Key)" >> $GITHUB_ENV
             echo "Signing keystore decoded from GitHub Secrets."
           else
+            echo "SIGNING_STATUS=臨時 Debug 簽署 (Secrets 待設定)" >> $GITHUB_ENV
             echo "KEYSTORE_BASE64 secret not provided. Building standard debug APK."
           fi
 
-      - name: Build APK (Debug & Release)
+      - name: Build APK
         run: ./gradlew assemble
 
-      - name: Extract APK Fingerprints and SHA-256 Checksum
+      - name: Verify APK Signature & Extract Fingerprints with apksigner
         run: |
+          set -e
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
           mkdir -p artifacts
 
@@ -65,21 +68,85 @@ jobs:
             TARGET_APK="$UNSIGNED_RELEASE_APK"
           fi
 
-          if [ -n "$TARGET_APK" ]; then
-            NAMED_APK="artifacts/app-${SHORT_SHA}.apk"
-            cp "$TARGET_APK" "$NAMED_APK"
-
-            # 1. 檔案 SHA-256 校驗碼
-            sha256sum "$NAMED_APK" | awk '{print $1}' > "${NAMED_APK}.sha256"
-
-            # 2. APK 簽章指紋 (提供給 Google Cloud Console OAuth 設定)
-            echo "=== APK Certificate Signing Fingerprints (Google Cloud OAuth Setup) ===" > artifacts/apk_signature_fingerprints.txt
-            keytool -list -printcert -jarfile "$NAMED_APK" >> artifacts/apk_signature_fingerprints.txt || true
-            cat artifacts/apk_signature_fingerprints.txt
-            echo "APK and signature fingerprints extracted successfully."
-          else
-            echo "No APK generated."
+          if [ -z "$TARGET_APK" ] || [ ! -f "$TARGET_APK" ]; then
+            echo "Error: No signed APK file found after build."
+            exit 1
           fi
+
+          NAMED_APK="artifacts/app-${SHORT_SHA}.apk"
+          cp "$TARGET_APK" "$NAMED_APK"
+
+          # 1. 計算 APK 檔案校驗碼 (File SHA-256 Checksum)
+          FILE_SHA256=$(sha256sum "$NAMED_APK" | awk '{print $1}')
+          echo "$FILE_SHA256" > "${NAMED_APK}.sha256"
+
+          # 2. 使用 Android SDK apksigner 驗證並提取簽章憑證指紋
+          APKSIGNER_BIN=$(find $ANDROID_SDK_ROOT/build-tools -name "apksigner" | sort -V | tail -n 1)
+          if [ -z "$APKSIGNER_BIN" ]; then
+            APKSIGNER_BIN="apksigner"
+          fi
+
+          echo "Using apksigner: $APKSIGNER_BIN"
+          VERIFY_OUTPUT=$("$APKSIGNER_BIN" verify --verbose --print-certs "$NAMED_APK")
+
+          CERT_SHA1=$(echo "$VERIFY_OUTPUT" | grep -i "certificate SHA-1 digest:" | head -n 1 | awk '{print $NF}' | sed 's/../&:/g;s/:$//' | tr 'a-z' 'A-Z')
+          CERT_SHA256=$(echo "$VERIFY_OUTPUT" | grep -i "certificate SHA-256 digest:" | head -n 1 | awk '{print $NF}' | sed 's/../&:/g;s/:$//' | tr 'a-z' 'A-Z')
+
+          if [ -z "$CERT_SHA1" ]; then
+            echo "Error: Failed to extract SHA-1 signature fingerprint from APK."
+            exit 1
+          fi
+
+          # 3. 輸出 apk_signature_fingerprints.txt
+          REPORT_FILE="artifacts/apk_signature_fingerprints.txt"
+          cat << EOF > "$REPORT_FILE"
+===================================================================
+MoneyTracker Android App - APK 簽章指紋報告 (Google Cloud OAuth 專用)
+===================================================================
+
+[基本資訊]
+- APK 檔名: app-${SHORT_SHA}.apk
+- Commit SHA: ${{ github.sha }}
+- Application ID / Package: com.moneytracker.app
+- 簽章模式狀態: ${SIGNING_STATUS}
+
+[Google Cloud Console OAuth 2.0 Client 登記資訊]
+- Package Name: com.moneytracker.app
+- SHA-1 簽章憑證指紋: ${CERT_SHA1}
+- SHA-256 簽章憑證指紋: ${CERT_SHA256}
+
+[APK 檔案校驗碼 (File Checksum)]
+- APK 檔案 SHA-256: ${FILE_SHA256}
+
+⚠️ 聲明:
+1. 請將上述「SHA-1 簽章憑證指紋」填入 Google Cloud Console > 憑證 > Android OAuth 用戶端 ID。
+2. 請勿將「APK 檔案 SHA-256 校驗碼」與「簽章憑證指紋」混淆。
+EOF
+
+          cat "$REPORT_FILE"
+
+          # 4. 寫入 GitHub Actions Job Summary
+          cat << EOF >> $GITHUB_STEP_SUMMARY
+### 📱 MoneyTracker APK 建置與簽章指紋報告
+
+* **APK 檔名**: \`app-${SHORT_SHA}.apk\`
+* **Commit SHA**: \`${{ github.sha }}\`
+* **Package Name**: \`com.moneytracker.app\`
+* **簽章模式**: **${SIGNING_STATUS}**
+
+#### 🔑 Google Cloud Console OAuth 2.0 設定必填資訊：
+* **SHA-1 簽章憑證指紋**:
+  \`\`\`text
+  ${CERT_SHA1}
+  \`\`\`
+* **SHA-256 簽章憑證指紋**:
+  \`\`\`text
+  ${CERT_SHA256}
+  \`\`\`
+
+#### 📄 APK 檔案校驗碼 (File Checksum)：
+* **APK File SHA-256**: \`${FILE_SHA256}\`
+EOF
 
       - name: Upload APK & Signature Fingerprint Artifacts
         if: always()

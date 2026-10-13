@@ -53,15 +53,19 @@
    * 在「測試使用者 (Test users)」清單中新增進行測試的 Google 帳號。
 
 3. **提取 APK 簽章 SHA-1 / SHA-256 指紋**:
-   * **方式 A (從本地 Gradle 簽章報告提取)**:
+   * **方式 A (從 GitHub Actions CI Artifacts 下載指紋報告)**:
+     每次 Actions 建置完成後，會自動在 Job Summary 與 Artifacts 產出 `apk_signature_fingerprints.txt`，直接複製其中的 **SHA-1 簽章憑證指紋** 即可。
+   * **方式 B (使用 Android SDK apksigner 工具由 APK 提取)**:
+     ```bash
+     apksigner verify --verbose --print-certs app-debug.apk
+     ```
+   * **方式 C (從本地 Gradle 簽章報告提取)**:
      ```bash
      ./gradlew signingReport
      ```
-   * **方式 B (從已產出的 APK 檔案直接提取簽章指紋)**:
-     ```bash
-     keytool -list -printcert -jarfile app-debug.apk
-     ```
-     *(注意：請勿將「APK 檔案 SHA-256 校驗碼」誤當成「APK 簽章證書 SHA-1 指紋」！)*
+   * ⚠️ **觀念釐清 (重要)**:
+     * **APK 簽章憑證指紋 (Signature Fingerprint, 如 SHA-1)**：代表開發者/打包金鑰的數位證書身份，供 Google Cloud Console 登記 OAuth 2.0 使用。
+     * **APK 檔案校驗碼 (File Checksum, 如 `app-*.apk.sha256`)**：代表 APK 檔案本身的完整性雜湊值，**絕對不能**當作 OAuth 的簽章 SHA-1 填寫。
 
 4. **建立 Android OAuth 2.0 Client ID**:
    * 進入 Google Cloud Console「憑證 (Credentials)」 > 「建立憑證」 > 「OAuth 用戶端 ID」。
@@ -114,12 +118,16 @@
 2. 在左側工作流程清單中選擇 **Build & Package Android APK**。
 3. 點擊右側的 **Run workflow** 按鈕，選擇分支並點擊確認執行。
 
-### 3. 下載 APK Artifacts、校驗碼與測試報告
+### 3. 下載 APK Artifacts、校驗碼與簽章指紋報告
 1. 進入任何一次執行的 Action Run 詳情頁面。
-2. 捲動至頁面底部的 **Artifacts** 區塊：
-   * **`app-debug-apk-<commit-sha>`**: 包含檔名標示有 commit 短碼之 Debug APK（如 `app-debug-a1b2c3d.apk`）與 SHA-256 校驗碼檔案（如 `app-debug-a1b2c3d.apk.sha256`）。
+2. 檢視頁面頂部的 **Summary 摘要區塊**，直接檢視 `com.moneytracker.app` 之 **SHA-1 簽章憑證指紋** 與簽章模式。
+3. 捲動至頁面底部的 **Artifacts** 區塊下載產物：
+   * **`app-apk-<commit-sha>`**:
+     * `app-<commit-sha>.apk`: 可直接安裝測試之 Android APK。
+     * `app-<commit-sha>.apk.sha256`: APK 檔案下載完整性校驗碼。
+     * `apk_signature_fingerprints.txt`: APK 簽章憑證 SHA-1 / SHA-256 指紋報告（提供給 Google Cloud Console 登記 OAuth 用）。
    * **`test-report-<commit-sha>`**: 包含單元測試報告（HTML / XML 格式）。
-3. Artifacts 保留期限為 30 天。若測試失敗，產物仍會保留備查與下載。
+4. Artifacts 保留期限為 30 天。若單元測試或簽章驗證失敗，建置將直接中斷標示失敗。
 
 ---
 
