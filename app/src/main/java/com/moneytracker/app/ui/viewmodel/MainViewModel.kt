@@ -93,6 +93,39 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         FAILED
     }
 
+    data class RestoreSummary(
+        val accountCount: Int,
+        val categoryCount: Int,
+        val transactionCount: Int,
+        val contactCount: Int,
+        val loanCount: Int,
+        val repaymentCount: Int
+    )
+
+    sealed class CloudBackupListState {
+        object Idle : CloudBackupListState()
+        object Loading : CloudBackupListState()
+        data class Success(val backups: List<CloudBackupInfo>) : CloudBackupListState()
+        object Empty : CloudBackupListState()
+        data class Error(val message: String) : CloudBackupListState()
+    }
+
+    sealed class RestoreUiState {
+        object Idle : RestoreUiState()
+        object Downloading : RestoreUiState()
+        object DecryptingAndValidating : RestoreUiState()
+        object Restoring : RestoreUiState()
+        data class Success(val summary: RestoreSummary) : RestoreUiState()
+        data class Error(val message: String) : RestoreUiState()
+    }
+
+    sealed class BackupUiState {
+        object Idle : BackupUiState()
+        object BackingUp : BackupUiState()
+        object Success : BackupUiState()
+        data class Error(val message: String) : BackupUiState()
+    }
+
     // Settings / Backup State
     private val _googleAccountEmail = MutableStateFlow<String?>(null)
     val googleAccountEmail: StateFlow<String?> = _googleAccountEmail.asStateFlow()
@@ -108,6 +141,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _cloudBackups = MutableStateFlow<List<CloudBackupInfo>>(emptyList())
     val cloudBackups: StateFlow<List<CloudBackupInfo>> = _cloudBackups.asStateFlow()
+
+    private val _cloudBackupListState = MutableStateFlow<CloudBackupListState>(CloudBackupListState.Idle)
+    val cloudBackupListState: StateFlow<CloudBackupListState> = _cloudBackupListState.asStateFlow()
+
+    private val _restoreUiState = MutableStateFlow<RestoreUiState>(RestoreUiState.Idle)
+    val restoreUiState: StateFlow<RestoreUiState> = _restoreUiState.asStateFlow()
+
+    private val _backupUiState = MutableStateFlow<BackupUiState>(BackupUiState.Idle)
+    val backupUiState: StateFlow<BackupUiState> = _backupUiState.asStateFlow()
+
+    private val _isOperationInProgress = MutableStateFlow(false)
+    val isOperationInProgress: StateFlow<Boolean> = _isOperationInProgress.asStateFlow()
 
     private val _uiMessage = MutableStateFlow<String?>(null)
     val uiMessage: StateFlow<String?> = _uiMessage.asStateFlow()
@@ -177,6 +222,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             BackupWorker.cancelPeriodicBackup(getApplication())
             _googleAccountEmail.value = null
             _cloudBackups.value = emptyList()
+            _cloudBackupListState.value = CloudBackupListState.Idle
             _lastBackupTime.value = null
             _googleAuthState.value = GoogleAuthState.LOGGED_OUT
             _googleAuthErrorMessage.value = null
@@ -280,22 +326,39 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun performBackup(password: String?) {
+        if (_isOperationInProgress.value) return
         viewModelScope.launch {
             val email = _googleAccountEmail.value
             if (email.isNullOrEmpty()) {
                 _uiMessage.value = "請先連動 Google 帳號"
+                _backupUiState.value = BackupUiState.Error("請先連動 Google 帳號")
                 return@launch
             }
-            val driveManager = GoogleDriveManager(getApplication(), email)
-            val backupRepo = BackupRestoreRepository(db, driveManager)
 
-            val result = backupRepo.backupToGoogleDrive(password)
-            if (result.isSuccess) {
-                val metadata = result.getOrNull()
-                _lastBackupTime.value = metadata?.backupTime
-                _uiMessage.value = "Google Drive 備份成功！"
-            } else {
-                _uiMessage.value = "備份失敗: ${result.exceptionOrNull()?.message}"
+            _isOperationInProgress.value = true
+            _backupUiState.value = BackupUiState.BackingUp
+
+            try {
+                val driveManager = GoogleDriveManager(getApplication(), email)
+                val backupRepo = BackupRestoreRepository(db, driveManager)
+
+                val result = backupRepo.backupToGoogleDrive(password)
+                if (result.isSuccess) {
+                    val metadata = result.getOrNull()
+                    _lastBackupTime.value = metadata?.backupTime
+                    _backupUiState.value = BackupUiState.Success
+                    _uiMessage.value = "Google Drive 備份成功！"
+                } else {
+                    val errorMsg = result.exceptionOrNull()?.message ?: "備份失敗"
+                    _backupUiState.value = BackupUiState.Error(errorMsg)
+                    _uiMessage.value = "備份失敗: $errorMsg"
+                }
+            } catch (e: Exception) {
+                val errorMsg = e.message ?: "備份過程發生錯誤"
+                _backupUiState.value = BackupUiState.Error(errorMsg)
+                _uiMessage.value = "備份失敗: $errorMsg"
+            } finally {
+                _isOperationInProgress.value = false
             }
         }
     }
@@ -303,35 +366,117 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun fetchCloudBackups() {
         viewModelScope.launch {
             val email = _googleAccountEmail.value
-            if (email.isNullOrEmpty()) return@launch
+            if (email.isNullOrEmpty()) {
+                _cloudBackupListState.value = CloudBackupListState.Error("請先連結 Google 帳號")
+                return@launch
+            }
 
-            val driveManager = GoogleDriveManager(getApplication(), email)
-            val backupRepo = BackupRestoreRepository(db, driveManager)
+            _cloudBackupListState.value = CloudBackupListState.Loading
+            _cloudBackups.value = emptyList()
 
-            val result = backupRepo.listCloudBackups()
-            if (result.isSuccess) {
-                _cloudBackups.value = result.getOrDefault(emptyList())
-            } else {
-                _uiMessage.value = "取得雲端備份失敗: ${result.exceptionOrNull()?.message}"
+            try {
+                val driveManager = GoogleDriveManager(getApplication(), email)
+                val backupRepo = BackupRestoreRepository(db, driveManager)
+
+                val result = backupRepo.listCloudBackups()
+                if (result.isSuccess) {
+                    val backups = result.getOrDefault(emptyList())
+                    _cloudBackups.value = backups
+                    if (backups.isEmpty()) {
+                        _cloudBackupListState.value = CloudBackupListState.Empty
+                    } else {
+                        _cloudBackupListState.value = CloudBackupListState.Success(backups)
+                    }
+                } else {
+                    val errorMsg = result.exceptionOrNull()?.message ?: "無法取得雲端備份列表"
+                    _cloudBackupListState.value = CloudBackupListState.Error(errorMsg)
+                    _uiMessage.value = "取得雲端備份失敗: $errorMsg"
+                }
+            } catch (e: Exception) {
+                val errorMsg = e.message ?: "發生未知錯誤"
+                _cloudBackupListState.value = CloudBackupListState.Error(errorMsg)
+                _uiMessage.value = "取得雲端備份失敗: $errorMsg"
             }
         }
     }
 
     fun restoreCloudBackup(fileId: String, password: String?) {
+        if (_isOperationInProgress.value) return
         viewModelScope.launch {
             val email = _googleAccountEmail.value
-            if (email.isNullOrEmpty()) return@launch
+            if (email.isNullOrEmpty()) {
+                _restoreUiState.value = RestoreUiState.Error("請先連動 Google 帳號")
+                return@launch
+            }
 
-            val driveManager = GoogleDriveManager(getApplication(), email)
-            val backupRepo = BackupRestoreRepository(db, driveManager)
+            _isOperationInProgress.value = true
+            try {
+                val driveManager = GoogleDriveManager(getApplication(), email)
+                val backupRepo = BackupRestoreRepository(db, driveManager)
 
-            val result = backupRepo.restoreFromCloudBackup(fileId, password)
-            if (result.isSuccess) {
-                _uiMessage.value = "資料還原成功！"
-            } else {
-                _uiMessage.value = "還原失敗: ${result.exceptionOrNull()?.message}"
+                // 階段 1: 下載
+                _restoreUiState.value = RestoreUiState.Downloading
+                val downloadedBytes = try {
+                    driveManager.downloadBackupFile(fileId)
+                } catch (e: Exception) {
+                    val errorMsg = "下載備份檔案失敗: ${e.message ?: "網路或存取權限異常"}"
+                    _restoreUiState.value = RestoreUiState.Error(errorMsg)
+                    _uiMessage.value = errorMsg
+                    return@launch
+                }
+
+                // 階段 2: 解密與格式/關聯完整性驗證
+                _restoreUiState.value = RestoreUiState.DecryptingAndValidating
+                val payload = try {
+                    com.moneytracker.app.data.backup.BackupCryptoManager.decryptAndDeserializePayload(
+                        downloadedBytes,
+                        password
+                    )
+                } catch (e: Exception) {
+                    val errorMsg = e.message ?: "解密或驗證資料失敗"
+                    _restoreUiState.value = RestoreUiState.Error(errorMsg)
+                    _uiMessage.value = "還原失敗: $errorMsg"
+                    return@launch
+                }
+
+                // 階段 3: 資料庫寫入
+                _restoreUiState.value = RestoreUiState.Restoring
+                val restoreResult = backupRepo.restoreFromPayload(payload)
+
+                // 階段 4: 成果處理
+                if (restoreResult.isSuccess) {
+                    loadSettings()
+                    val summary = RestoreSummary(
+                        accountCount = payload.accounts.size,
+                        categoryCount = payload.categories.size,
+                        transactionCount = payload.transactions.size,
+                        contactCount = payload.contacts.size,
+                        loanCount = payload.loans.size,
+                        repaymentCount = payload.loanRepayments.size
+                    )
+                    _restoreUiState.value = RestoreUiState.Success(summary)
+                    _uiMessage.value = "資料還原成功！"
+                } else {
+                    val errorMsg = restoreResult.exceptionOrNull()?.message ?: "寫入資料庫失敗"
+                    _restoreUiState.value = RestoreUiState.Error(errorMsg)
+                    _uiMessage.value = "還原失敗: $errorMsg"
+                }
+            } catch (e: Exception) {
+                val errorMsg = e.message ?: "還原過程發生未知錯誤"
+                _restoreUiState.value = RestoreUiState.Error(errorMsg)
+                _uiMessage.value = "還原失敗: $errorMsg"
+            } finally {
+                _isOperationInProgress.value = false
             }
         }
+    }
+
+    fun resetRestoreUiState() {
+        _restoreUiState.value = RestoreUiState.Idle
+    }
+
+    fun resetBackupUiState() {
+        _backupUiState.value = BackupUiState.Idle
     }
 
     fun addAccount(name: String, type: com.moneytracker.app.data.model.AccountType, initialBalance: Long) {

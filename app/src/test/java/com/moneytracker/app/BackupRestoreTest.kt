@@ -101,7 +101,7 @@ class BackupRestoreTest {
 
     @Test
     fun testEncryptionAndDecryptionWithPassword() = runBlocking {
-        val accId = appRepo.insertAccount(AccountEntity(name = "現金", type = AccountType.CASH, initialBalance = 10000))
+        appRepo.insertAccount(AccountEntity(name = "現金", type = AccountType.CASH, initialBalance = 10000))
         val payload = BackupCryptoManager.createBackupPayload(db)
 
         val password = "MySecretPassword123"
@@ -115,7 +115,7 @@ class BackupRestoreTest {
 
     @Test(expected = Exception::class)
     fun testDecryptionWithWrongPasswordFails() = runBlocking {
-        val accId = appRepo.insertAccount(AccountEntity(name = "現金", type = AccountType.CASH, initialBalance = 10000))
+        appRepo.insertAccount(AccountEntity(name = "現金", type = AccountType.CASH, initialBalance = 10000))
         val payload = BackupCryptoManager.createBackupPayload(db)
 
         val password = "MySecretPassword123"
@@ -161,5 +161,108 @@ class BackupRestoreTest {
         assertNotNull(restoredLoan)
         assertEquals(2000L, restoredLoan!!.repaidAmount)
         assertEquals(3000L, restoredLoan.remainingAmount)
+    }
+
+    @Test
+    fun testRestorePreservesGoogleAccountEmailAndAppSettings() = runBlocking {
+        // 模擬本機已登入 Google 帳號
+        val currentEmail = "testuser@gmail.com"
+        db.settingsAndBackupDao().setSettingValue(
+            com.moneytracker.app.data.entity.AppSettingsEntity("google_account_email", currentEmail)
+        )
+
+        appRepo.insertAccount(AccountEntity(name = "舊帳戶", type = AccountType.CASH, initialBalance = 1000))
+        val payload = BackupCryptoManager.createBackupPayload(db)
+
+        // 模擬異動本機資料
+        appRepo.insertAccount(AccountEntity(name = "臨時帳戶", type = AccountType.BANK, initialBalance = 500))
+
+        // 還原舊備份
+        val result = backupRepo.restoreFromPayload(payload)
+        assertTrue(result.isSuccess)
+
+        // 驗證 Google 帳號依然保留
+        val restoredEmail = db.settingsAndBackupDao().getSettingValue("google_account_email")
+        assertEquals(currentEmail, restoredEmail)
+    }
+
+    @Test
+    fun testRestoreValidationFailsWithMissingForeignKeyAccount() = runBlocking {
+        val payload = BackupPayload(
+            schemaVersion = 1,
+            accounts = emptyList(),
+            categories = emptyList(),
+            transactions = listOf(
+                TransactionEntity(
+                    id = 1,
+                    type = TransactionType.EXPENSE,
+                    amount = 100,
+                    dateMillis = System.currentTimeMillis(),
+                    sourceAccountId = 999L, // 不存在的帳戶 ID
+                    categoryId = null,
+                    note = "孤兒交易"
+                )
+            ),
+            contacts = emptyList(),
+            loans = emptyList(),
+            loanRepayments = emptyList(),
+            settings = emptyList()
+        )
+
+        val result = backupRepo.restoreFromPayload(payload)
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull()?.message?.contains("來源帳戶 ID") == true)
+    }
+
+    @Test
+    fun testRestoreValidationFailsWithUnknownVersion() = runBlocking {
+        val payload = BackupPayload(
+            schemaVersion = 99,
+            accounts = emptyList(),
+            categories = emptyList(),
+            transactions = emptyList(),
+            contacts = emptyList(),
+            loans = emptyList(),
+            loanRepayments = emptyList(),
+            settings = emptyList()
+        )
+
+        val result = backupRepo.restoreFromPayload(payload)
+        assertTrue(result.isFailure)
+        assertTrue(result.exceptionOrNull()?.message?.contains("不支援的備份版本") == true)
+    }
+
+    @Test
+    fun testRestoreRollbackOnFailurePreservesOriginalData() = runBlocking {
+        appRepo.insertAccount(AccountEntity(name = "重要原有帳戶", type = AccountType.CASH, initialBalance = 9999))
+
+        val invalidPayload = BackupPayload(
+            schemaVersion = 1,
+            accounts = emptyList(),
+            categories = emptyList(),
+            transactions = listOf(
+                TransactionEntity(
+                    id = 1,
+                    type = TransactionType.EXPENSE,
+                    amount = 100,
+                    dateMillis = System.currentTimeMillis(),
+                    sourceAccountId = 8888L, // 無效 FK
+                    categoryId = null,
+                    note = "無效交易"
+                )
+            ),
+            contacts = emptyList(),
+            loans = emptyList(),
+            loanRepayments = emptyList(),
+            settings = emptyList()
+        )
+
+        val result = backupRepo.restoreFromPayload(invalidPayload)
+        assertTrue(result.isFailure)
+
+        // 驗證原資料完全不受影響 (已回滾)
+        val accounts = db.accountDao().getAllAccounts()
+        assertEquals(1, accounts.size)
+        assertEquals("重要原有帳戶", accounts[0].name)
     }
 }

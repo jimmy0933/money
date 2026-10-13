@@ -29,6 +29,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -69,6 +70,9 @@ fun SettingsScreen(viewModel: MainViewModel) {
     val googleAuthErrorMessage by viewModel.googleAuthErrorMessage.collectAsState()
     val lastBackupTime by viewModel.lastBackupTime.collectAsState()
     val cloudBackups by viewModel.cloudBackups.collectAsState()
+    val cloudBackupListState by viewModel.cloudBackupListState.collectAsState()
+    val restoreUiState by viewModel.restoreUiState.collectAsState()
+    val isOperationInProgress by viewModel.isOperationInProgress.collectAsState()
 
     val accounts by viewModel.accounts.collectAsState()
     val categories by viewModel.categories.collectAsState()
@@ -208,7 +212,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
                         Button(
                             onClick = { showBackupPasswordDialog = true },
                             modifier = Modifier.weight(1f),
-                            enabled = !googleAccountEmail.isNullOrBlank()
+                            enabled = !googleAccountEmail.isNullOrBlank() && !isOperationInProgress
                         ) {
                             Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(4.dp))
@@ -217,11 +221,12 @@ fun SettingsScreen(viewModel: MainViewModel) {
 
                         Button(
                             onClick = {
+                                viewModel.resetRestoreUiState()
                                 viewModel.fetchCloudBackups()
                                 showRestoreDialog = true
                             },
                             modifier = Modifier.weight(1f),
-                            enabled = !googleAccountEmail.isNullOrBlank()
+                            enabled = !googleAccountEmail.isNullOrBlank() && !isOperationInProgress
                         ) {
                             Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(4.dp))
@@ -343,9 +348,15 @@ fun SettingsScreen(viewModel: MainViewModel) {
     if (showRestoreDialog) {
         var pwdInput by remember { mutableStateOf("") }
         var selectedFileId by remember { mutableStateOf<String?>(null) }
+        val selectedFile = cloudBackups.find { it.fileId == selectedFileId }
 
         AlertDialog(
-            onDismissRequest = { showRestoreDialog = false },
+            onDismissRequest = {
+                if (!isOperationInProgress) {
+                    viewModel.resetRestoreUiState()
+                    showRestoreDialog = false
+                }
+            },
             title = { Text("選擇 Google Drive 備份還原") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -356,53 +367,166 @@ fun SettingsScreen(viewModel: MainViewModel) {
                         onValueChange = { pwdInput = it },
                         label = { Text("備份解密密碼 (如未設定請留空)") },
                         modifier = Modifier.fillMaxWidth(),
+                        enabled = !isOperationInProgress,
                         singleLine = true
                     )
 
                     Spacer(modifier = Modifier.height(4.dp))
                     Text("雲端備份歷史列表：", fontWeight = FontWeight.Bold)
 
-                    if (cloudBackups.isEmpty()) {
-                        Text("未在 Google Drive 找到任何備份檔", color = Color.Gray, fontSize = 13.sp)
-                    } else {
-                        LazyColumn(modifier = Modifier.height(150.dp)) {
-                            items(cloudBackups) { file ->
-                                val isSelected = selectedFileId == file.fileId
-                                Card(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 4.dp)
-                                        .clickable { selectedFileId = file.fileId },
-                                    colors = CardDefaults.cardColors(
-                                        containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
-                                    )
-                                ) {
-                                    Column(modifier = Modifier.padding(8.dp)) {
-                                        Text(file.fileName, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                        Text("日期: ${dateFormat.format(Date(file.createdTimeMillis))}", fontSize = 11.sp)
+                    when (val state = cloudBackupListState) {
+                        is MainViewModel.CloudBackupListState.Loading -> {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(100.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("正在讀取雲端備份列表中...", fontSize = 13.sp)
+                            }
+                        }
+                        is MainViewModel.CloudBackupListState.Empty -> {
+                            Text("未在 Google Drive 找到任何備份檔", color = Color.Gray, fontSize = 13.sp)
+                        }
+                        is MainViewModel.CloudBackupListState.Error -> {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("載入失敗: ${state.message}", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                                Spacer(modifier = Modifier.height(4.dp))
+                                TextButton(onClick = { viewModel.fetchCloudBackups() }) {
+                                    Text("重新載入列表")
+                                }
+                            }
+                        }
+                        is MainViewModel.CloudBackupListState.Success -> {
+                            LazyColumn(modifier = Modifier.height(150.dp)) {
+                                items(state.backups) { file ->
+                                    val isSelected = selectedFileId == file.fileId
+                                    Card(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 4.dp)
+                                            .clickable(enabled = !isOperationInProgress) {
+                                                selectedFileId = file.fileId
+                                            },
+                                        colors = CardDefaults.cardColors(
+                                            containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
+                                        )
+                                    ) {
+                                        Column(modifier = Modifier.padding(8.dp)) {
+                                            Text(file.fileName, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                            Text("日期: ${dateFormat.format(Date(file.createdTimeMillis))}", fontSize = 11.sp)
+                                        }
                                     }
                                 }
                             }
                         }
+                        else -> {
+                            Text("尚未載入備份列表", color = Color.Gray, fontSize = 13.sp)
+                        }
+                    }
+
+                    if (selectedFile != null) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+                        ) {
+                            Column(modifier = Modifier.padding(8.dp)) {
+                                Text("已選取備份檔：", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                Text("檔名: ${selectedFile.fileName}", fontSize = 12.sp)
+                                Text("時間: ${dateFormat.format(Date(selectedFile.createdTimeMillis))}", fontSize = 12.sp)
+                            }
+                        }
+                    } else {
+                        Text("請明確在上方列表中點選要還原的備份檔", color = Color.Gray, fontSize = 12.sp)
+                    }
+
+                    // 還原執行階段狀態展示
+                    when (val restoreState = restoreUiState) {
+                        is MainViewModel.RestoreUiState.Downloading -> {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("正在下載雲端備份檔案...", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+                        is MainViewModel.RestoreUiState.DecryptingAndValidating -> {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("正在解密並進行完整資料關聯驗證...", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+                        is MainViewModel.RestoreUiState.Restoring -> {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("正在以交易機制覆蓋資料庫...", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+                        is MainViewModel.RestoreUiState.Success -> {
+                            val s = restoreState.summary
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F5E9))
+                            ) {
+                                Column(modifier = Modifier.padding(8.dp)) {
+                                    Text("還原成功！", color = Color(0xFF2E7D32), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                    Text("資料摘要：帳戶 ${s.accountCount} 筆, 分類 ${s.categoryCount} 筆, 交易 ${s.transactionCount} 筆, 聯絡人 ${s.contactCount} 筆, 借貸 ${s.loanCount} 筆, 還款 ${s.repaymentCount} 筆", fontSize = 11.sp, color = Color(0xFF1B5E20))
+                                }
+                            }
+                        }
+                        is MainViewModel.RestoreUiState.Error -> {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                            ) {
+                                Column(modifier = Modifier.padding(8.dp)) {
+                                    Text("還原失敗：", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                    Text(restoreState.message, color = MaterialTheme.colorScheme.onErrorContainer, fontSize = 12.sp)
+                                }
+                            }
+                        }
+                        else -> {}
                     }
                 }
             },
             confirmButton = {
-                Button(
-                    onClick = {
-                        val fileId = selectedFileId ?: cloudBackups.firstOrNull()?.fileId
-                        if (fileId != null) {
-                            viewModel.restoreCloudBackup(fileId, pwdInput.ifBlank { null })
+                if (restoreUiState is MainViewModel.RestoreUiState.Success) {
+                    Button(
+                        onClick = {
+                            viewModel.resetRestoreUiState()
                             showRestoreDialog = false
                         }
-                    },
-                    enabled = cloudBackups.isNotEmpty()
-                ) {
-                    Text("確認還原")
+                    ) {
+                        Text("完成並關閉")
+                    }
+                } else {
+                    Button(
+                        onClick = {
+                            val fileId = selectedFileId
+                            if (fileId != null) {
+                                viewModel.restoreCloudBackup(fileId, pwdInput.ifBlank { null })
+                            }
+                        },
+                        enabled = selectedFileId != null && !isOperationInProgress
+                    ) {
+                        Text(if (restoreUiState is MainViewModel.RestoreUiState.Error) "重試還原" else "確認還原")
+                    }
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showRestoreDialog = false }) { Text("取消") }
+                TextButton(
+                    onClick = {
+                        viewModel.resetRestoreUiState()
+                        showRestoreDialog = false
+                    },
+                    enabled = !isOperationInProgress
+                ) {
+                    Text(if (restoreUiState is MainViewModel.RestoreUiState.Success) "關閉" else "取消")
+                }
             }
         )
     }
