@@ -24,8 +24,8 @@ android {
     signingConfigs {
         create("customRelease") {
             val keystorePath = System.getenv("KEYSTORE_PATH")
-            val keystoreFile = if (keystorePath != null) file(keystorePath) else file("release.keystore")
-            if (keystoreFile.exists() && System.getenv("KEYSTORE_PASSWORD") != null) {
+            val keystoreFile = if (keystorePath != null) rootProject.file(keystorePath) else rootProject.file("release.keystore")
+            if (keystoreFile.exists() && !System.getenv("KEYSTORE_PASSWORD").isNullOrEmpty()) {
                 storeFile = keystoreFile
                 storePassword = System.getenv("KEYSTORE_PASSWORD")
                 keyAlias = System.getenv("KEY_ALIAS") ?: "release"
@@ -38,8 +38,8 @@ android {
         release {
             isMinifyEnabled = false
             val keystorePath = System.getenv("KEYSTORE_PATH")
-            val keystoreFile = if (keystorePath != null) file(keystorePath) else file("release.keystore")
-            if (keystoreFile.exists() && System.getenv("KEYSTORE_PASSWORD") != null) {
+            val keystoreFile = if (keystorePath != null) rootProject.file(keystorePath) else rootProject.file("release.keystore")
+            if (keystoreFile.exists() && !System.getenv("KEYSTORE_PASSWORD").isNullOrEmpty()) {
                 signingConfig = signingConfigs.getByName("customRelease")
             }
             proguardFiles(
