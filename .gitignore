@@ -13,3 +13,12 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Keystores & Signing Keys / Passwords
+*.keystore
+*.jks
+*.p12
+money-keystore-base64.txt
+money-signing-passwords.txt
+signing-info.txt
+restore-keystore.txt
