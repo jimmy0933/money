@@ -38,31 +38,46 @@
 
 ## 三、Google OAuth Client ID 與 Drive API 設定指南
 
-在實際真機環境啟用 Google 帳號登入與 Google Drive 雲端備份時，請依照下列步驟於 Google Cloud Console 設定：
+* **Android Package Name**: `com.moneytracker.app`
 
-1. **開啟 Google Cloud Console**:
-   * 造訪 [Google Cloud Console](https://console.cloud.google.com/) 並建立新專案。
+在實際實機環境啟用 Google 帳號登入與 Google Drive 雲端備份時，請依照下列步驟於 Google Cloud Console 與 GitHub 設定：
 
-2. **啟用 Google Drive API**:
-   * 進入「API 與服務」 > 「程式庫 (Library)」。
-   * 搜尋 `Google Drive API` 並點擊「啟用 (Enable)」。
+1. **開啟 Google Cloud Console 專案與啟用 Drive API**:
+   * 造訪 [Google Cloud Console](https://console.cloud.google.com/) 並建立或選擇專案。
+   * 進入「API 與服務」 > 「程式庫」，搜尋 `Google Drive API` 並點擊「啟用 (Enable)」。
 
-3. **設定 OAuth 同意畫面**:
+2. **設定 OAuth 同意畫面與測試使用者**:
    * 進入「API 與服務」 > 「OAuth 同意畫面」。
    * 選擇「外部 (External)」，填寫應用程式名稱與支援 Email。
-   * 新增 Scope 權限範圍：`.../auth/drive.appdata` 與 `.../auth/drive.file`。
-   * 在測試使用者 (Test users) 中新增您的測試 Google 帳號。
+   * 新增必要的 Scope 權限範圍：`https://www.googleapis.com/auth/drive.appdata` 與 `https://www.googleapis.com/auth/drive.file`。
+   * 在「測試使用者 (Test users)」清單中新增進行測試的 Google 帳號。
 
-4. **取得 SHA-1 指紋與建立 OAuth 2.0 Client ID**:
-   * 在專案根目錄執行以下指令取得 Debug SHA-1 指紋：
+3. **提取 APK 簽章 SHA-1 / SHA-256 指紋**:
+   * **方式 A (從本地 Gradle 簽章報告提取)**:
      ```bash
      ./gradlew signingReport
      ```
+   * **方式 B (從已產出的 APK 檔案直接提取簽章指紋)**:
+     ```bash
+     keytool -list -printcert -jarfile app-debug.apk
+     ```
+     *(注意：請勿將「APK 檔案 SHA-256 校驗碼」誤當成「APK 簽章證書 SHA-1 指紋」！)*
+
+4. **建立 Android OAuth 2.0 Client ID**:
    * 進入 Google Cloud Console「憑證 (Credentials)」 > 「建立憑證」 > 「OAuth 用戶端 ID」。
-   * 應用程式類型選擇「Android」。
-   * **封包名稱 (Package Name)**: `com.moneytracker.app`
-   * **SHA-1 憑證指紋**: 填入上方取得之 SHA-1 指紋。
-   * 建立後即可獲得 Android OAuth Client ID。
+   * **應用程式類型**: 選擇「Android」。
+   * **Package Name**: `com.moneytracker.app`
+   * **SHA-1 憑證指紋**: 填入上述步驟取得之 SHA-1 簽章指紋。
+
+5. **設定 GitHub Secrets (專用 Release 簽章庫)**:
+   * 若要在 CI/CD (GitHub Actions) 產出具備固定簽章的測試 APK，請於 GitHub Repository > Settings > Secrets and variables > Actions 新增以下Secrets：
+     * `KEYSTORE_BASE64`: keystore 檔案之 Base64 編碼字串
+     * `KEYSTORE_PASSWORD`: keystore 密碼
+     * `KEY_ALIAS`: key 別名
+     * `KEY_PASSWORD`: key 密碼
+
+> ⚠️ **重要說明 (真實帳號驗證狀態聲明)**:
+> 未在 Google Cloud Console 上完成此 Android 包名 (`com.moneytracker.app`) 與 SHA-1 簽章指紋配置前，Google Play 服務會拒絕 OAuth 請求（通常拋出 `ApiException: 10 DEVELOPER_ERROR` 或 `12500`）。在缺乏實際 Google Cloud 憑證配置的環境下，**實機真實 Google 帳號登入列為待完成驗證**，本 App 已提供完整的錯誤碼揭露、診斷日誌及權限補全導引。
 
 ---
 

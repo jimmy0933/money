@@ -31,30 +31,61 @@ jobs:
       - name: Run Unit Tests
         run: ./gradlew testDebugUnitTest
 
-      - name: Build Debug APK
-        run: ./gradlew assembleDebug
+      - name: Decode Release Keystore from Secrets (if configured)
+        run: |
+          if [ -n "${{ secrets.KEYSTORE_BASE64 }}" ]; then
+            echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > release.keystore
+            echo "KEYSTORE_PATH=release.keystore" >> $GITHUB_ENV
+            echo "KEYSTORE_PASSWORD=${{ secrets.KEYSTORE_PASSWORD }}" >> $GITHUB_ENV
+            echo "KEY_ALIAS=${{ secrets.KEY_ALIAS }}" >> $GITHUB_ENV
+            echo "KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> $GITHUB_ENV
+            echo "Signing keystore decoded from GitHub Secrets."
+          else
+            echo "KEYSTORE_BASE64 secret not provided. Building standard debug APK."
+          fi
 
-      - name: Prepare APK Artifacts and SHA-256 Checksum
+      - name: Build APK (Debug & Release)
+        run: ./gradlew assemble
+
+      - name: Extract APK Fingerprints and SHA-256 Checksum
         run: |
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
           mkdir -p artifacts
 
-          APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
-          NAMED_APK="artifacts/app-debug-${SHORT_SHA}.apk"
+          DEBUG_APK="app/build/outputs/apk/debug/app-debug.apk"
+          RELEASE_APK="app/build/outputs/apk/release/app-release.apk"
+          UNSIGNED_RELEASE_APK="app/build/outputs/apk/release/app-release-unsigned.apk"
 
-          if [ -f "$APK_PATH" ]; then
-            cp "$APK_PATH" "$NAMED_APK"
-            sha256sum "$NAMED_APK" | awk '{print $1}' > "${NAMED_APK}.sha256"
-            echo "APK and SHA-256 checksum created successfully."
-          else
-            echo "APK file not found at $APK_PATH"
+          TARGET_APK=""
+          if [ -f "$RELEASE_APK" ]; then
+            TARGET_APK="$RELEASE_APK"
+          elif [ -f "$DEBUG_APK" ]; then
+            TARGET_APK="$DEBUG_APK"
+          elif [ -f "$UNSIGNED_RELEASE_APK" ]; then
+            TARGET_APK="$UNSIGNED_RELEASE_APK"
           fi
 
-      - name: Upload APK and SHA-256 Checksum Artifacts
+          if [ -n "$TARGET_APK" ]; then
+            NAMED_APK="artifacts/app-${SHORT_SHA}.apk"
+            cp "$TARGET_APK" "$NAMED_APK"
+
+            # 1. 檔案 SHA-256 校驗碼
+            sha256sum "$NAMED_APK" | awk '{print $1}' > "${NAMED_APK}.sha256"
+
+            # 2. APK 簽章指紋 (提供給 Google Cloud Console OAuth 設定)
+            echo "=== APK Certificate Signing Fingerprints (Google Cloud OAuth Setup) ===" > artifacts/apk_signature_fingerprints.txt
+            keytool -list -printcert -jarfile "$NAMED_APK" >> artifacts/apk_signature_fingerprints.txt || true
+            cat artifacts/apk_signature_fingerprints.txt
+            echo "APK and signature fingerprints extracted successfully."
+          else
+            echo "No APK generated."
+          fi
+
+      - name: Upload APK & Signature Fingerprint Artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug-apk-${{ github.sha }}
+          name: app-apk-${{ github.sha }}
           path: artifacts/*
           retention-days: 30
 
