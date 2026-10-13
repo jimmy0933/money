@@ -1,6 +1,6 @@
 name: Build & Package Android APK
 
-on:
+'on':
   push:
     branches:
       - master
@@ -100,53 +100,53 @@ jobs:
           # 3. 輸出 apk_signature_fingerprints.txt
           REPORT_FILE="artifacts/apk_signature_fingerprints.txt"
           cat << EOF > "$REPORT_FILE"
-===================================================================
-MoneyTracker Android App - APK 簽章指紋報告 (Google Cloud OAuth 專用)
-===================================================================
+          ===================================================================
+          MoneyTracker Android App - APK 簽章指紋報告 (Google Cloud OAuth 專用)
+          ===================================================================
 
-[基本資訊]
-- APK 檔名: app-${SHORT_SHA}.apk
-- Commit SHA: ${{ github.sha }}
-- Application ID / Package: com.moneytracker.app
-- 簽章模式狀態: ${SIGNING_STATUS}
+          [基本資訊]
+          - APK 檔名: app-${SHORT_SHA}.apk
+          - Commit SHA: ${{ github.sha }}
+          - Application ID / Package: com.moneytracker.app
+          - 簽章模式狀態: ${SIGNING_STATUS}
 
-[Google Cloud Console OAuth 2.0 Client 登記資訊]
-- Package Name: com.moneytracker.app
-- SHA-1 簽章憑證指紋: ${CERT_SHA1}
-- SHA-256 簽章憑證指紋: ${CERT_SHA256}
+          [Google Cloud Console OAuth 2.0 Client 登記資訊]
+          - Package Name: com.moneytracker.app
+          - SHA-1 簽章憑證指紋: ${CERT_SHA1}
+          - SHA-256 簽章憑證指紋: ${CERT_SHA256}
 
-[APK 檔案校驗碼 (File Checksum)]
-- APK 檔案 SHA-256: ${FILE_SHA256}
+          [APK 檔案校驗碼 (File Checksum)]
+          - APK 檔案 SHA-256: ${FILE_SHA256}
 
-⚠️ 聲明:
-1. 請將上述「SHA-1 簽章憑證指紋」填入 Google Cloud Console > 憑證 > Android OAuth 用戶端 ID。
-2. 請勿將「APK 檔案 SHA-256 校驗碼」與「簽章憑證指紋」混淆。
-EOF
+          ⚠️ 聲明:
+          1. 請將上述「SHA-1 簽章憑證指紋」填入 Google Cloud Console > 憑證 > Android OAuth 用戶端 ID。
+          2. 請勿將「APK 檔案 SHA-256 校驗碼」與「簽章憑證指紋」混淆。
+          EOF
 
           cat "$REPORT_FILE"
 
           # 4. 寫入 GitHub Actions Job Summary
           cat << EOF >> $GITHUB_STEP_SUMMARY
-### 📱 MoneyTracker APK 建置與簽章指紋報告
+          ### 📱 MoneyTracker APK 建置與簽章指紋報告
 
-* **APK 檔名**: \`app-${SHORT_SHA}.apk\`
-* **Commit SHA**: \`${{ github.sha }}\`
-* **Package Name**: \`com.moneytracker.app\`
-* **簽章模式**: **${SIGNING_STATUS}**
+          * **APK 檔名**: \`app-${SHORT_SHA}.apk\`
+          * **Commit SHA**: \`${{ github.sha }}\`
+          * **Package Name**: \`com.moneytracker.app\`
+          * **簽章模式**: **${SIGNING_STATUS}**
 
-#### 🔑 Google Cloud Console OAuth 2.0 設定必填資訊：
-* **SHA-1 簽章憑證指紋**:
-  \`\`\`text
-  ${CERT_SHA1}
-  \`\`\`
-* **SHA-256 簽章憑證指紋**:
-  \`\`\`text
-  ${CERT_SHA256}
-  \`\`\`
+          #### 🔑 Google Cloud Console OAuth 2.0 設定必填資訊：
+          * **SHA-1 簽章憑證指紋**:
+            \`\`\`text
+            ${CERT_SHA1}
+            \`\`\`
+          * **SHA-256 簽章憑證指紋**:
+            \`\`\`text
+            ${CERT_SHA256}
+            \`\`\`
 
-#### 📄 APK 檔案校驗碼 (File Checksum)：
-* **APK File SHA-256**: \`${FILE_SHA256}\`
-EOF
+          #### 📄 APK 檔案校驗碼 (File Checksum)：
+          * **APK File SHA-256**: \`${FILE_SHA256}\`
+          EOF
 
       - name: Upload APK & Signature Fingerprint Artifacts
         if: always()
