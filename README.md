@@ -52,33 +52,38 @@
    * 新增必要的 Scope 權限範圍：`https://www.googleapis.com/auth/drive.appdata` 與 `https://www.googleapis.com/auth/drive.file`。
    * 在「測試使用者 (Test users)」清單中新增進行測試的 Google 帳號。
 
-3. **提取 APK 簽章 SHA-1 / SHA-256 指紋**:
-   * **方式 A (從 GitHub Actions CI Artifacts 下載指紋報告)**:
-     每次 Actions 建置完成後，會自動在 Job Summary 與 Artifacts 產出 `apk_signature_fingerprints.txt`，直接複製其中的 **SHA-1 簽章憑證指紋** 即可。
+3. **設定 GitHub Secrets (專用 Release 固定簽章庫)**:
+   若要在 CI/CD (GitHub Actions) 產出具備固定簽章的測試與交付 APK，請於 GitHub Repository > Settings > Secrets and variables > Actions 新增以下 4 個 Secrets：
+   * `KEYSTORE_BASE64`: 將 KeyStore / JKS 檔案轉碼為 Base64 字串（可用 `base64 -w 0 release.keystore` 或 `openssl base64 -A -in release.keystore` 生成）。
+   * `KEYSTORE_PASSWORD`: KeyStore 的存取密碼。
+   * `KEY_ALIAS`: 金鑰別名 (Alias)。
+   * `KEY_PASSWORD`: 金鑰別名專用密碼。
+
+   > 💡若缺少上述任一 Secrets，CI 將自動降級為「臨時 Debug 簽署」，並在 CI 報告中標示待設定 Secrets。
+
+4. **提取 APK 簽章 SHA-1 / SHA-256 指紋**:
+   * **方式 A (從 GitHub Actions CI 摘要與 Artifacts 提取 - 推薦)**:
+     每次 Actions 建置完成後，會使用 Android SDK `apksigner` 自動驗證交付之 APK，並在 Actions **Job Summary 摘要** 與 Artifacts (`apk_signature_fingerprints.txt`) 產出 **SHA-1 簽章憑證指紋**。
    * **方式 B (使用 Android SDK apksigner 工具由 APK 提取)**:
      ```bash
-     apksigner verify --verbose --print-certs app-debug.apk
+     apksigner verify --verbose --print-certs app-release.apk
      ```
    * **方式 C (從本地 Gradle 簽章報告提取)**:
      ```bash
      ./gradlew signingReport
      ```
-   * ⚠️ **觀念釐清 (重要)**:
-     * **APK 簽章憑證指紋 (Signature Fingerprint, 如 SHA-1)**：代表開發者/打包金鑰的數位證書身份，供 Google Cloud Console 登記 OAuth 2.0 使用。
-     * **APK 檔案校驗碼 (File Checksum, 如 `app-*.apk.sha256`)**：代表 APK 檔案本身的完整性雜湊值，**絕對不能**當作 OAuth 的簽章 SHA-1 填寫。
 
-4. **建立 Android OAuth 2.0 Client ID**:
+5. **建立 Android OAuth 2.0 Client ID**:
    * 進入 Google Cloud Console「憑證 (Credentials)」 > 「建立憑證」 > 「OAuth 用戶端 ID」。
-   * **應用程式類型**: 選擇「Android」。
-   * **Package Name**: `com.moneytracker.app`
-   * **SHA-1 憑證指紋**: 填入上述步驟取得之 SHA-1 簽章指紋。
+   * **應用程式類型 (Application type)**: 選擇 **Android**。
+   * **Package Name**: 必須填寫 `com.moneytracker.app` (與 APK 實際 package 完全一致)。
+   * **SHA-1 憑證指紋**: 填入上述步驟取得之 **SHA-1 簽章憑證指紋** (格式如 `XX:XX:XX:...:XX`)。
 
-5. **設定 GitHub Secrets (專用 Release 簽章庫)**:
-   * 若要在 CI/CD (GitHub Actions) 產出具備固定簽章的測試 APK，請於 GitHub Repository > Settings > Secrets and variables > Actions 新增以下Secrets：
-     * `KEYSTORE_BASE64`: keystore 檔案之 Base64 編碼字串
-     * `KEYSTORE_PASSWORD`: keystore 密碼
-     * `KEY_ALIAS`: key 別名
-     * `KEY_PASSWORD`: key 密碼
+6. **⚠️ 觀念釐清：APK 檔案校驗碼與簽章憑證指紋之差異**:
+   * **簽章憑證指紋 (Signature Fingerprint, 如 SHA-1 / SHA-256)**：
+     代表開發者/打包金鑰的數位證書身份，由簽署金鑰 (KeyStore) 決定。**Google Cloud Console 登記 OAuth 用戶端必須填寫簽章憑證 SHA-1**。同一 KeyStore 簽署的所有版本 APK 指紋皆完全相同。
+   * **APK 檔案校驗碼 (File Checksum, 如 `app-*.apk.sha256`)**：
+     對 APK 檔案二進位內容計算所得之 SHA-256 Checksum 雜湊值，用於驗證檔案下載完整性。每次重新編譯或調整檔案內容後均會改變，**絕對不能**當作 OAuth 的簽章 SHA-1 填寫。
 
 > ⚠️ **重要說明 (真實帳號驗證狀態聲明)**:
 > 未在 Google Cloud Console 上完成此 Android 包名 (`com.moneytracker.app`) 與 SHA-1 簽章指紋配置前，Google Play 服務會拒絕 OAuth 請求（通常拋出 `ApiException: 10 DEVELOPER_ERROR` 或 `12500`）。在缺乏實際 Google Cloud 憑證配置的環境下，**實機真實 Google 帳號登入列為待完成驗證**，本 App 已提供完整的錯誤碼揭露、診斷日誌及權限補全導引。
@@ -101,7 +106,13 @@
 產出的 APK 檔案將位於：
 `app/build/outputs/apk/debug/app-debug.apk`
 
-*(註：若在完全無外網存取的隔離 Sandbox 環境中，外部 Maven 儲存庫 `com.google.apis:google-api-services-drive` 依賴庫之 Jar 檔將無法下載；請確保在連網環境下建置即可成功產出 APK。)*
+### 建置 Release APK (使用固定 KeyStore)
+設定環境變數後執行：
+```bash
+KEYSTORE_PATH=release.keystore KEYSTORE_PASSWORD=your_pass KEY_ALIAS=your_alias KEY_PASSWORD=your_pass ./gradlew assembleRelease
+```
+產出的 APK 檔案將位於：
+`app/build/outputs/apk/release/app-release.apk`
 
 ---
 
@@ -120,14 +131,14 @@
 
 ### 3. 下載 APK Artifacts、校驗碼與簽章指紋報告
 1. 進入任何一次執行的 Action Run 詳情頁面。
-2. 檢視頁面頂部的 **Summary 摘要區塊**，直接檢視 `com.moneytracker.app` 之 **SHA-1 簽章憑證指紋** 與簽章模式。
+2. 檢視頁面頂部的 **Summary 摘要區塊**，直接檢視與複製 `com.moneytracker.app` 之 **SHA-1 簽章憑證指紋**、Package Name 與簽章模式。
 3. 捲動至頁面底部的 **Artifacts** 區塊下載產物：
    * **`app-apk-<commit-sha>`**:
      * `app-<commit-sha>.apk`: 可直接安裝測試之 Android APK。
-     * `app-<commit-sha>.apk.sha256`: APK 檔案下載完整性校驗碼。
+     * `app-<commit-sha>.apk.sha256`: APK 檔案下載完整性校驗碼 (File Checksum)。
      * `apk_signature_fingerprints.txt`: APK 簽章憑證 SHA-1 / SHA-256 指紋報告（提供給 Google Cloud Console 登記 OAuth 用）。
    * **`test-report-<commit-sha>`**: 包含單元測試報告（HTML / XML 格式）。
-4. Artifacts 保留期限為 30 天。若單元測試或簽章驗證失敗，建置將直接中斷標示失敗。
+4. Artifacts 保留期限為 30 天。若單元測試、簽章驗證或憑證指紋擷取失敗，建置將直接標示失敗。
 
 ---
 

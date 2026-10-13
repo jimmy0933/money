@@ -33,21 +33,39 @@ jobs:
 
       - name: Decode Release Keystore from Secrets (if configured)
         run: |
-          if [ -n "${{ secrets.KEYSTORE_BASE64 }}" ]; then
+          if [ -n "${{ secrets.KEYSTORE_BASE64 }}" ] && [ -n "${{ secrets.KEYSTORE_PASSWORD }}" ] && [ -n "${{ secrets.KEY_ALIAS }}" ] && [ -n "${{ secrets.KEY_PASSWORD }}" ]; then
             echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > release.keystore
             echo "KEYSTORE_PATH=release.keystore" >> $GITHUB_ENV
             echo "KEYSTORE_PASSWORD=${{ secrets.KEYSTORE_PASSWORD }}" >> $GITHUB_ENV
             echo "KEY_ALIAS=${{ secrets.KEY_ALIAS }}" >> $GITHUB_ENV
             echo "KEY_PASSWORD=${{ secrets.KEY_PASSWORD }}" >> $GITHUB_ENV
+            echo "SIGNING_MODE=fixed" >> $GITHUB_ENV
             echo "SIGNING_STATUS=固定 KeyStore 簽署 (Release Key)" >> $GITHUB_ENV
+            echo "MISSING_SECRETS=無 (已設定完整固定 KeyStore Secrets)" >> $GITHUB_ENV
             echo "Signing keystore decoded from GitHub Secrets."
           else
+            echo "SIGNING_MODE=debug" >> $GITHUB_ENV
             echo "SIGNING_STATUS=臨時 Debug 簽署 (Secrets 待設定)" >> $GITHUB_ENV
-            echo "KEYSTORE_BASE64 secret not provided. Building standard debug APK."
+            MISSING=""
+            [ -z "${{ secrets.KEYSTORE_BASE64 }}" ] && MISSING="${MISSING} KEYSTORE_BASE64"
+            [ -z "${{ secrets.KEYSTORE_PASSWORD }}" ] && MISSING="${MISSING} KEYSTORE_PASSWORD"
+            [ -z "${{ secrets.KEY_ALIAS }}" ] && MISSING="${MISSING} KEY_ALIAS"
+            [ -z "${{ secrets.KEY_PASSWORD }}" ] && MISSING="${MISSING} KEY_PASSWORD"
+            echo "MISSING_SECRETS=待設定 GitHub Secrets:${MISSING}" >> $GITHUB_ENV
+            echo "Required signing secrets missing:${MISSING}. Building standard debug APK."
           fi
 
       - name: Build APK
-        run: ./gradlew assemble
+        run: |
+          if [ "$SIGNING_MODE" = "fixed" ]; then
+            echo "Building Release APK with fixed KeyStore..."
+            ./gradlew assembleRelease
+            echo "TARGET_APK=app/build/outputs/apk/release/app-release.apk" >> $GITHUB_ENV
+          else
+            echo "Building Debug APK with default debug KeyStore..."
+            ./gradlew assembleDebug
+            echo "TARGET_APK=app/build/outputs/apk/debug/app-debug.apk" >> $GITHUB_ENV
+          fi
 
       - name: Verify APK Signature & Extract Fingerprints with apksigner
         run: |
@@ -55,21 +73,8 @@ jobs:
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
           mkdir -p artifacts
 
-          DEBUG_APK="app/build/outputs/apk/debug/app-debug.apk"
-          RELEASE_APK="app/build/outputs/apk/release/app-release.apk"
-          UNSIGNED_RELEASE_APK="app/build/outputs/apk/release/app-release-unsigned.apk"
-
-          TARGET_APK=""
-          if [ -f "$RELEASE_APK" ]; then
-            TARGET_APK="$RELEASE_APK"
-          elif [ -f "$DEBUG_APK" ]; then
-            TARGET_APK="$DEBUG_APK"
-          elif [ -f "$UNSIGNED_RELEASE_APK" ]; then
-            TARGET_APK="$UNSIGNED_RELEASE_APK"
-          fi
-
           if [ -z "$TARGET_APK" ] || [ ! -f "$TARGET_APK" ]; then
-            echo "Error: No signed APK file found after build."
+            echo "Error: Target APK file not found at '$TARGET_APK'."
             exit 1
           fi
 
@@ -92,12 +97,29 @@ jobs:
           CERT_SHA1=$(echo "$VERIFY_OUTPUT" | grep -i "certificate SHA-1 digest:" | head -n 1 | awk '{print $NF}' | sed 's/../&:/g;s/:$//' | tr 'a-z' 'A-Z')
           CERT_SHA256=$(echo "$VERIFY_OUTPUT" | grep -i "certificate SHA-256 digest:" | head -n 1 | awk '{print $NF}' | sed 's/../&:/g;s/:$//' | tr 'a-z' 'A-Z')
 
-          if [ -z "$CERT_SHA1" ]; then
-            echo "Error: Failed to extract SHA-1 signature fingerprint from APK."
+          if [ -z "$CERT_SHA1" ] || [ -z "$CERT_SHA256" ]; then
+            echo "Error: Failed to extract SHA-1 or SHA-256 signature fingerprint from APK."
             exit 1
           fi
 
-          # 3. 輸出 apk_signature_fingerprints.txt
+          # 3. 驗證並提取 Package Name
+          AAPT_BIN=$(find $ANDROID_SDK_ROOT/build-tools -name "aapt" | sort -V | tail -n 1)
+          if [ -z "$AAPT_BIN" ]; then
+            AAPT_BIN="aapt"
+          fi
+          APK_PACKAGE=$("$AAPT_BIN" dump badging "$NAMED_APK" 2>/dev/null | grep "^package:" | head -n 1 | sed -E "s/^package: name='([^']+)'.*/\1/")
+
+          if [ -z "$APK_PACKAGE" ]; then
+            echo "Error: Failed to extract package name from APK."
+            exit 1
+          fi
+
+          if [ "$APK_PACKAGE" != "com.moneytracker.app" ]; then
+            echo "Error: Package name mismatch! Expected 'com.moneytracker.app', got '$APK_PACKAGE'"
+            exit 1
+          fi
+
+          # 4. 輸出 apk_signature_fingerprints.txt
           REPORT_FILE="artifacts/apk_signature_fingerprints.txt"
           cat << EOF > "$REPORT_FILE"
           ===================================================================
@@ -107,34 +129,42 @@ jobs:
           [基本資訊]
           - APK 檔名: app-${SHORT_SHA}.apk
           - Commit SHA: ${{ github.sha }}
-          - Application ID / Package: com.moneytracker.app
+          - Application ID / Package: ${APK_PACKAGE}
           - 簽章模式狀態: ${SIGNING_STATUS}
+          - Secrets 狀態: ${MISSING_SECRETS}
 
           [Google Cloud Console OAuth 2.0 Client 登記資訊]
-          - Package Name: com.moneytracker.app
+          - Package Name: ${APK_PACKAGE}
           - SHA-1 簽章憑證指紋: ${CERT_SHA1}
           - SHA-256 簽章憑證指紋: ${CERT_SHA256}
 
           [APK 檔案校驗碼 (File Checksum)]
           - APK 檔案 SHA-256: ${FILE_SHA256}
 
-          ⚠️ 聲明:
-          1. 請將上述「SHA-1 簽章憑證指紋」填入 Google Cloud Console > 憑證 > Android OAuth 用戶端 ID。
+          ⚠️ 聲明與說明:
+          1. 請將上述「SHA-1 簽章憑證指紋」填入 Google Cloud Console > 憑證 > Android OAuth 用戶端 ID 的 SHA-1 欄位。
           2. 請勿將「APK 檔案 SHA-256 校驗碼」與「簽章憑證指紋」混淆。
+             - SHA-1 / SHA-256 簽章指紋代表 App 的簽署金鑰身份。
+             - APK 檔案 SHA-256 僅為檔案完整性校驗碼。
           EOF
 
           cat "$REPORT_FILE"
 
-          # 4. 寫入 GitHub Actions Job Summary
+          # 5. 寫入 GitHub Actions Job Summary
           cat << EOF >> $GITHUB_STEP_SUMMARY
           ### 📱 MoneyTracker APK 建置與簽章指紋報告
 
           * **APK 檔名**: \`app-${SHORT_SHA}.apk\`
           * **Commit SHA**: \`${{ github.sha }}\`
-          * **Package Name**: \`com.moneytracker.app\`
+          * **Package Name**: \`${APK_PACKAGE}\`
           * **簽章模式**: **${SIGNING_STATUS}**
+          * **Secrets 狀態**: \`${MISSING_SECRETS}\`
 
           #### 🔑 Google Cloud Console OAuth 2.0 設定必填資訊：
+          * **Package Name**:
+            \`\`\`text
+            ${APK_PACKAGE}
+            \`\`\`
           * **SHA-1 簽章憑證指紋**:
             \`\`\`text
             ${CERT_SHA1}
