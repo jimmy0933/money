@@ -38,6 +38,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -72,6 +73,8 @@ fun SettingsScreen(viewModel: MainViewModel) {
     val cloudBackups by viewModel.cloudBackups.collectAsState()
     val cloudBackupListState by viewModel.cloudBackupListState.collectAsState()
     val restoreUiState by viewModel.restoreUiState.collectAsState()
+    val backupUiState by viewModel.backupUiState.collectAsState()
+    val accountSaveState by viewModel.accountSaveState.collectAsState()
     val isOperationInProgress by viewModel.isOperationInProgress.collectAsState()
 
     val accounts by viewModel.accounts.collectAsState()
@@ -203,6 +206,50 @@ fun SettingsScreen(viewModel: MainViewModel) {
                         )
                     }
 
+                    when (val bState = backupUiState) {
+                        is MainViewModel.BackupUiState.BackingUp -> {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                CircularProgressIndicator(modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("正在建立交易快照並上傳備份至 Google Drive...", fontSize = 12.sp)
+                            }
+                        }
+                        is MainViewModel.BackupUiState.Success -> {
+                            val details = bState.details
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F5E9))
+                            ) {
+                                Column(modifier = Modifier.padding(8.dp)) {
+                                    Text("最近一次備份成功！", color = Color(0xFF2E7D32), fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                    Text("時間: ${dateFormat.format(Date(details.backupTime))}", fontSize = 11.sp)
+                                    Text("帳戶筆數: ${details.accountCount} 筆 | 交易筆數: ${details.transactionCount} 筆", fontSize = 11.sp)
+                                    Text("備份識別 ID: ${details.driveFileId}", fontSize = 11.sp, color = Color.DarkGray)
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Button(
+                                        onClick = {
+                                            viewModel.resetRestoreUiState()
+                                            viewModel.fetchCloudBackups()
+                                            showRestoreDialog = true
+                                            viewModel.inspectBackupForRestore(details.driveFileId, null)
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
+                                        modifier = Modifier.height(32.dp)
+                                    ) {
+                                        Text("還原此備份", fontSize = 11.sp)
+                                    }
+                                }
+                            }
+                        }
+                        is MainViewModel.BackupUiState.Error -> {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text("備份失敗: ${bState.message}", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                        }
+                        else -> {}
+                    }
+
                     Spacer(modifier = Modifier.height(12.dp))
 
                     Row(
@@ -245,7 +292,10 @@ fun SettingsScreen(viewModel: MainViewModel) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text("帳戶管理", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                IconButton(onClick = { showAccountDialog = true }) {
+                IconButton(onClick = {
+                    viewModel.resetAccountSaveState()
+                    showAccountDialog = true
+                }) {
                     Icon(Icons.Default.Add, contentDescription = "新增帳戶")
                 }
             }
@@ -410,6 +460,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
                                             .padding(vertical = 4.dp)
                                             .clickable(enabled = !isOperationInProgress) {
                                                 selectedFileId = file.fileId
+                                                viewModel.inspectBackupForRestore(file.fileId, pwdInput.ifBlank { null })
                                             },
                                         colors = CardDefaults.cardColors(
                                             containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
@@ -418,6 +469,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
                                         Column(modifier = Modifier.padding(8.dp)) {
                                             Text(file.fileName, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                                             Text("日期: ${dateFormat.format(Date(file.createdTimeMillis))}", fontSize = 11.sp)
+                                            Text("File ID: ${file.fileId}", fontSize = 10.sp, color = Color.Gray)
                                         }
                                     }
                                 }
@@ -437,33 +489,43 @@ fun SettingsScreen(viewModel: MainViewModel) {
                                 Text("已選取備份檔：", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                                 Text("檔名: ${selectedFile.fileName}", fontSize = 12.sp)
                                 Text("時間: ${dateFormat.format(Date(selectedFile.createdTimeMillis))}", fontSize = 12.sp)
+                                Text("File ID: ${selectedFile.fileId}", fontSize = 11.sp, color = Color.DarkGray)
                             }
                         }
                     } else {
                         Text("請明確在上方列表中點選要還原的備份檔", color = Color.Gray, fontSize = 12.sp)
                     }
 
-                    // 還原執行階段狀態展示
+                    // 還原執行階段與預覽狀態展示
                     when (val restoreState = restoreUiState) {
                         is MainViewModel.RestoreUiState.Downloading -> {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 CircularProgressIndicator(modifier = Modifier.size(20.dp))
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("正在下載雲端備份檔案...", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                                Text("正在下載並驗證備份內容...", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
                             }
                         }
-                        is MainViewModel.RestoreUiState.DecryptingAndValidating -> {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                CircularProgressIndicator(modifier = Modifier.size(20.dp))
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("正在解密並進行完整資料關聯驗證...", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                        is MainViewModel.RestoreUiState.Preview -> {
+                            val payload = restoreState.payload
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
+                            ) {
+                                Column(modifier = Modifier.padding(8.dp)) {
+                                    Text("備份檔驗證通過（預覽資訊）：", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                    Text("備份時間: ${dateFormat.format(Date(payload.createdAt))}", fontSize = 11.sp)
+                                    Text("帳戶筆數: ${payload.accounts.size} 筆 | 分類: ${payload.categories.size} 筆", fontSize = 11.sp)
+                                    Text("交易筆數: ${payload.transactions.size} 筆 | 借貸: ${payload.loans.size} 筆", fontSize = 11.sp)
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text("確認要以此備份檔內容完全覆蓋本機資料嗎？", color = Color.Red, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
                         is MainViewModel.RestoreUiState.Restoring -> {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 CircularProgressIndicator(modifier = Modifier.size(20.dp))
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("正在以交易機制覆蓋資料庫...", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                                Text("正在以交易機制覆蓋資料庫並讀回核對...", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
                             }
                         }
                         is MainViewModel.RestoreUiState.Success -> {
@@ -473,8 +535,8 @@ fun SettingsScreen(viewModel: MainViewModel) {
                                 colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F5E9))
                             ) {
                                 Column(modifier = Modifier.padding(8.dp)) {
-                                    Text("還原成功！", color = Color(0xFF2E7D32), fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                    Text("資料摘要：帳戶 ${s.accountCount} 筆, 分類 ${s.categoryCount} 筆, 交易 ${s.transactionCount} 筆, 聯絡人 ${s.contactCount} 筆, 借貸 ${s.loanCount} 筆, 還款 ${s.repaymentCount} 筆", fontSize = 11.sp, color = Color(0xFF1B5E20))
+                                    Text("還原成功且已自資料庫讀回核對無誤！", color = Color(0xFF2E7D32), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                    Text("資料庫實際筆數：帳戶 ${s.accountCount} 筆, 分類 ${s.categoryCount} 筆, 交易 ${s.transactionCount} 筆, 聯絡人 ${s.contactCount} 筆, 借貸 ${s.loanCount} 筆, 還款 ${s.repaymentCount} 筆", fontSize = 11.sp, color = Color(0xFF1B5E20))
                                 }
                             }
                         }
@@ -503,17 +565,29 @@ fun SettingsScreen(viewModel: MainViewModel) {
                     ) {
                         Text("完成並關閉")
                     }
+                } else if (restoreUiState is MainViewModel.RestoreUiState.Preview) {
+                    Button(
+                        onClick = {
+                            val fileId = selectedFileId
+                            if (fileId != null) {
+                                viewModel.confirmAndRestoreCloudBackup(fileId, pwdInput.ifBlank { null })
+                            }
+                        },
+                        enabled = !isOperationInProgress
+                    ) {
+                        Text("確認覆蓋還原")
+                    }
                 } else {
                     Button(
                         onClick = {
                             val fileId = selectedFileId
                             if (fileId != null) {
-                                viewModel.restoreCloudBackup(fileId, pwdInput.ifBlank { null })
+                                viewModel.inspectBackupForRestore(fileId, pwdInput.ifBlank { null })
                             }
                         },
                         enabled = selectedFileId != null && !isOperationInProgress
                     ) {
-                        Text(if (restoreUiState is MainViewModel.RestoreUiState.Error) "重試還原" else "確認還原")
+                        Text(if (restoreUiState is MainViewModel.RestoreUiState.Error) "重試驗證" else "檢驗備份內容")
                     }
                 }
             },
@@ -536,8 +610,20 @@ fun SettingsScreen(viewModel: MainViewModel) {
         var accType by remember { mutableStateOf(AccountType.CASH) }
         var initBalText by remember { mutableStateOf("") }
 
+        LaunchedEffect(accountSaveState) {
+            if (accountSaveState is MainViewModel.AccountSaveUiState.Success) {
+                showAccountDialog = false
+                viewModel.resetAccountSaveState()
+            }
+        }
+
         AlertDialog(
-            onDismissRequest = { showAccountDialog = false },
+            onDismissRequest = {
+                if (accountSaveState !is MainViewModel.AccountSaveUiState.Saving) {
+                    viewModel.resetAccountSaveState()
+                    showAccountDialog = false
+                }
+            },
             title = { Text("新增帳戶") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -546,6 +632,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
                         onValueChange = { accName = it },
                         label = { Text("帳戶名稱") },
                         modifier = Modifier.fillMaxWidth(),
+                        enabled = accountSaveState !is MainViewModel.AccountSaveUiState.Saving,
                         singleLine = true
                     )
 
@@ -554,25 +641,43 @@ fun SettingsScreen(viewModel: MainViewModel) {
                         onValueChange = { if (it.all { char -> char.isDigit() }) initBalText = it },
                         label = { Text("初始餘額 (TWD)") },
                         modifier = Modifier.fillMaxWidth(),
+                        enabled = accountSaveState !is MainViewModel.AccountSaveUiState.Saving,
                         singleLine = true
                     )
+
+                    if (accountSaveState is MainViewModel.AccountSaveUiState.Saving) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("正在儲存帳戶至資料庫...", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                        }
+                    } else if (accountSaveState is MainViewModel.AccountSaveUiState.Error) {
+                        val err = (accountSaveState as MainViewModel.AccountSaveUiState.Error).message
+                        Text("儲存失敗: $err", color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                    }
                 }
             },
             confirmButton = {
                 Button(
                     onClick = {
-                        if (accName.isNotBlank()) {
-                            val bal = initBalText.toLongOrNull() ?: 0L
-                            viewModel.addAccount(accName.trim(), accType, bal)
-                            showAccountDialog = false
-                        }
-                    }
+                        val bal = initBalText.toLongOrNull() ?: 0L
+                        viewModel.addAccount(accName.trim(), accType, bal)
+                    },
+                    enabled = accountSaveState !is MainViewModel.AccountSaveUiState.Saving && accName.isNotBlank()
                 ) {
-                    Text("儲存")
+                    Text(if (accountSaveState is MainViewModel.AccountSaveUiState.Saving) "儲存中..." else "儲存")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showAccountDialog = false }) { Text("取消") }
+                TextButton(
+                    onClick = {
+                        viewModel.resetAccountSaveState()
+                        showAccountDialog = false
+                    },
+                    enabled = accountSaveState !is MainViewModel.AccountSaveUiState.Saving
+                ) {
+                    Text("取消")
+                }
             }
         )
     }
@@ -613,4 +718,3 @@ fun SettingsScreen(viewModel: MainViewModel) {
         )
     }
 }
-

@@ -75,26 +75,26 @@ class AppRepository(private val db: AppDatabase) {
         }
     }
 
-    suspend fun insertAccount(account: AccountEntity): Long = accountDao.insertAccount(account)
-    suspend fun updateAccount(account: AccountEntity) = accountDao.updateAccount(account)
-    suspend fun softDeleteAccount(id: Long) = accountDao.softDeleteAccount(id)
+    suspend fun insertAccount(account: AccountEntity): Long = DataOperationCoordinator.runWriteOperation { accountDao.insertAccount(account) }
+    suspend fun updateAccount(account: AccountEntity) = DataOperationCoordinator.runWriteOperation { accountDao.updateAccount(account) }
+    suspend fun softDeleteAccount(id: Long) = DataOperationCoordinator.runWriteOperation { accountDao.softDeleteAccount(id) }
 
     // -------------------------------------------------------------
     // Categories
     // -------------------------------------------------------------
     fun getAllCategoriesFlow(): Flow<List<CategoryEntity>> = categoryDao.getAllCategoriesFlow()
     fun getCategoriesByTypeFlow(type: TransactionType): Flow<List<CategoryEntity>> = categoryDao.getCategoriesByTypeFlow(type)
-    suspend fun insertCategory(category: CategoryEntity): Long = categoryDao.insertCategory(category)
-    suspend fun updateCategory(category: CategoryEntity) = categoryDao.updateCategory(category)
-    suspend fun softDeleteCategory(id: Long) = categoryDao.softDeleteCategory(id)
+    suspend fun insertCategory(category: CategoryEntity): Long = DataOperationCoordinator.runWriteOperation { categoryDao.insertCategory(category) }
+    suspend fun updateCategory(category: CategoryEntity) = DataOperationCoordinator.runWriteOperation { categoryDao.updateCategory(category) }
+    suspend fun softDeleteCategory(id: Long) = DataOperationCoordinator.runWriteOperation { categoryDao.softDeleteCategory(id) }
 
     // -------------------------------------------------------------
     // Transactions
     // -------------------------------------------------------------
     fun getAllTransactionsFlow(): Flow<List<TransactionEntity>> = transactionDao.getAllTransactionsFlow()
-    suspend fun insertTransaction(transaction: TransactionEntity): Long = transactionDao.insertTransaction(transaction)
-    suspend fun updateTransaction(transaction: TransactionEntity) = transactionDao.updateTransaction(transaction)
-    suspend fun softDeleteTransaction(id: Long) = transactionDao.softDeleteTransaction(id)
+    suspend fun insertTransaction(transaction: TransactionEntity): Long = DataOperationCoordinator.runWriteOperation { transactionDao.insertTransaction(transaction) }
+    suspend fun updateTransaction(transaction: TransactionEntity) = DataOperationCoordinator.runWriteOperation { transactionDao.updateTransaction(transaction) }
+    suspend fun softDeleteTransaction(id: Long) = DataOperationCoordinator.runWriteOperation { transactionDao.softDeleteTransaction(id) }
 
     fun getIncomeSumBetweenFlow(startMillis: Long, endMillis: Long): Flow<Long> =
         transactionDao.getIncomeSumBetweenFlow(startMillis, endMillis)
@@ -204,37 +204,39 @@ class AppRepository(private val db: AppDatabase) {
         accountId: Long,
         note: String
     ): Long {
-        return db.withTransaction {
-            val contact = getOrCreateContact(contactName)
+        return DataOperationCoordinator.runWriteOperation {
+            db.withTransaction {
+                val contact = getOrCreateContact(contactName)
 
-            val loan = LoanEntity(
-                contactId = contact.id,
-                type = type,
-                amount = amount,
-                dateMillis = dateMillis,
-                dueDateMillis = dueDateMillis,
-                accountId = accountId,
-                note = note,
-                status = LoanStatus.UNPAID
-            )
-
-            val loanId = loanDao.insertLoan(loan)
-
-            val transactionType = if (type == LoanType.LEND) TransactionType.EXPENSE else TransactionType.INCOME
-            val txNote = if (type == LoanType.LEND) "借出款項給 ${contact.name}" else "向 ${contact.name} 借入款項"
-
-            transactionDao.insertTransaction(
-                TransactionEntity(
-                    type = transactionType,
+                val loan = LoanEntity(
+                    contactId = contact.id,
+                    type = type,
                     amount = amount,
                     dateMillis = dateMillis,
-                    sourceAccountId = accountId,
-                    note = if (note.isBlank()) txNote else "$txNote - $note",
-                    loanId = loanId
+                    dueDateMillis = dueDateMillis,
+                    accountId = accountId,
+                    note = note,
+                    status = LoanStatus.UNPAID
                 )
-            )
 
-            loanId
+                val loanId = loanDao.insertLoan(loan)
+
+                val transactionType = if (type == LoanType.LEND) TransactionType.EXPENSE else TransactionType.INCOME
+                val txNote = if (type == LoanType.LEND) "借出款項給 ${contact.name}" else "向 ${contact.name} 借入款項"
+
+                transactionDao.insertTransaction(
+                    TransactionEntity(
+                        type = transactionType,
+                        amount = amount,
+                        dateMillis = dateMillis,
+                        sourceAccountId = accountId,
+                        note = if (note.isBlank()) txNote else "$txNote - $note",
+                        loanId = loanId
+                    )
+                )
+
+                loanId
+            }
         }
     }
 
@@ -255,43 +257,45 @@ class AppRepository(private val db: AppDatabase) {
         note: String
     ): Result<Long> {
         return try {
-            val repaymentId = db.withTransaction {
-                val loan = loanDao.getLoanById(loanId) ?: throw IllegalArgumentException("借貸紀錄不存在")
-                val currentRepaid = loanRepaymentDao.getTotalRepaidForLoan(loanId)
+            val repaymentId = DataOperationCoordinator.runWriteOperation {
+                db.withTransaction {
+                    val loan = loanDao.getLoanById(loanId) ?: throw IllegalArgumentException("借貸紀錄不存在")
+                    val currentRepaid = loanRepaymentDao.getTotalRepaidForLoan(loanId)
 
-                if (currentRepaid + amount > loan.amount) {
-                    throw IllegalArgumentException("累積還款金額不能超過借貸本金 ($${loan.amount})")
-                }
+                    if (currentRepaid + amount > loan.amount) {
+                        throw IllegalArgumentException("累積還款金額不能超過借貸本金 ($${loan.amount})")
+                    }
 
-                val repayment = LoanRepaymentEntity(
-                    loanId = loanId,
-                    amount = amount,
-                    dateMillis = dateMillis,
-                    accountId = accountId,
-                    note = note
-                )
-                val id = loanRepaymentDao.insertRepayment(repayment)
-
-                val txType = if (loan.type == LoanType.LEND) TransactionType.INCOME else TransactionType.EXPENSE
-                val contact = contactDao.getContactById(loan.contactId)
-                val contactName = contact?.name ?: ""
-                val txNote = if (loan.type == LoanType.LEND) "$contactName 還款" else "償還 $contactName"
-
-                transactionDao.insertTransaction(
-                    TransactionEntity(
-                        type = txType,
+                    val repayment = LoanRepaymentEntity(
+                        loanId = loanId,
                         amount = amount,
                         dateMillis = dateMillis,
-                        sourceAccountId = accountId,
-                        note = if (note.isBlank()) txNote else "$txNote - $note",
-                        repaymentId = id
+                        accountId = accountId,
+                        note = note
                     )
-                )
+                    val id = loanRepaymentDao.insertRepayment(repayment)
 
-                // 重新計算並更新狀態
-                recalculateAndUpdateLoanStatus(loanId)
+                    val txType = if (loan.type == LoanType.LEND) TransactionType.INCOME else TransactionType.EXPENSE
+                    val contact = contactDao.getContactById(loan.contactId)
+                    val contactName = contact?.name ?: ""
+                    val txNote = if (loan.type == LoanType.LEND) "$contactName 還款" else "償還 $contactName"
 
-                id
+                    transactionDao.insertTransaction(
+                        TransactionEntity(
+                            type = txType,
+                            amount = amount,
+                            dateMillis = dateMillis,
+                            sourceAccountId = accountId,
+                            note = if (note.isBlank()) txNote else "$txNote - $note",
+                            repaymentId = id
+                        )
+                    )
+
+                    // 重新計算並更新狀態
+                    recalculateAndUpdateLoanStatus(loanId)
+
+                    id
+                }
             }
             Result.success(repaymentId)
         } catch (e: Exception) {
@@ -303,14 +307,16 @@ class AppRepository(private val db: AppDatabase) {
      * 刪除/修改還款
      */
     suspend fun deleteRepayment(repaymentId: Long) {
-        db.withTransaction {
-            val repayment = loanRepaymentDao.getRepaymentById(repaymentId) ?: return@withTransaction
-            val loanId = repayment.loanId
+        DataOperationCoordinator.runWriteOperation {
+            db.withTransaction {
+                val repayment = loanRepaymentDao.getRepaymentById(repaymentId) ?: return@withTransaction
+                val loanId = repayment.loanId
 
-            loanRepaymentDao.softDeleteRepayment(repaymentId)
-            transactionDao.softDeleteTransactionsByRepaymentId(repaymentId)
+                loanRepaymentDao.softDeleteRepayment(repaymentId)
+                transactionDao.softDeleteTransactionsByRepaymentId(repaymentId)
 
-            recalculateAndUpdateLoanStatus(loanId)
+                recalculateAndUpdateLoanStatus(loanId)
+            }
         }
     }
 
@@ -318,15 +324,17 @@ class AppRepository(private val db: AppDatabase) {
      * 刪除主借貸紀錄及相關還款與金流
      */
     suspend fun deleteLoan(loanId: Long) {
-        db.withTransaction {
-            val repayments = loanRepaymentDao.getRepaymentsByLoanId(loanId)
+        DataOperationCoordinator.runWriteOperation {
+            db.withTransaction {
+                val repayments = loanRepaymentDao.getRepaymentsByLoanId(loanId)
 
-            loanDao.softDeleteLoan(loanId)
-            loanRepaymentDao.softDeleteRepaymentsByLoanId(loanId)
-            transactionDao.softDeleteTransactionsByLoanId(loanId)
+                loanDao.softDeleteLoan(loanId)
+                loanRepaymentDao.softDeleteRepaymentsByLoanId(loanId)
+                transactionDao.softDeleteTransactionsByLoanId(loanId)
 
-            repayments.forEach {
-                transactionDao.softDeleteTransactionsByRepaymentId(it.id)
+                repayments.forEach {
+                    transactionDao.softDeleteTransactionsByRepaymentId(it.id)
+                }
             }
         }
     }

@@ -3,9 +3,13 @@ package com.moneytracker.app.ui.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.moneytracker.app.data.backup.BackupPayload
 import com.moneytracker.app.data.backup.BackupRestoreRepository
+import com.moneytracker.app.data.backup.BackupSuccessDetails
 import com.moneytracker.app.data.backup.CloudBackupInfo
+import com.moneytracker.app.data.backup.DriveManager
 import com.moneytracker.app.data.backup.GoogleDriveManager
+import com.moneytracker.app.data.backup.VerifiedRestoreSummary
 import com.moneytracker.app.data.db.AppDatabase
 import com.moneytracker.app.data.entity.AccountEntity
 import com.moneytracker.app.data.entity.AppSettingsEntity
@@ -18,6 +22,7 @@ import com.moneytracker.app.data.repository.AppRepository
 import com.moneytracker.app.data.repository.ContactSummary
 import com.moneytracker.app.data.repository.LoanWithDetails
 import com.moneytracker.app.worker.BackupWorker
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -27,9 +32,12 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.Calendar
 
-class MainViewModel(application: Application) : AndroidViewModel(application) {
+class MainViewModel(
+    application: Application,
+    database: AppDatabase? = null
+) : AndroidViewModel(application) {
 
-    val db = AppDatabase.getDatabase(application)
+    val db = database ?: AppDatabase.getDatabase(application)
     val repository = AppRepository(db)
 
     // Current Month range
@@ -93,14 +101,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         FAILED
     }
 
-    data class RestoreSummary(
-        val accountCount: Int,
-        val categoryCount: Int,
-        val transactionCount: Int,
-        val contactCount: Int,
-        val loanCount: Int,
-        val repaymentCount: Int
-    )
+    sealed class AccountSaveUiState {
+        object Idle : AccountSaveUiState()
+        object Saving : AccountSaveUiState()
+        object Success : AccountSaveUiState()
+        data class Error(val message: String) : AccountSaveUiState()
+    }
 
     sealed class CloudBackupListState {
         object Idle : CloudBackupListState()
@@ -113,16 +119,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     sealed class RestoreUiState {
         object Idle : RestoreUiState()
         object Downloading : RestoreUiState()
-        object DecryptingAndValidating : RestoreUiState()
+        data class Preview(val fileId: String, val payload: BackupPayload) : RestoreUiState()
         object Restoring : RestoreUiState()
-        data class Success(val summary: RestoreSummary) : RestoreUiState()
+        data class Success(val summary: VerifiedRestoreSummary) : RestoreUiState()
         data class Error(val message: String) : RestoreUiState()
     }
 
     sealed class BackupUiState {
         object Idle : BackupUiState()
         object BackingUp : BackupUiState()
-        object Success : BackupUiState()
+        data class Success(val details: BackupSuccessDetails) : BackupUiState()
         data class Error(val message: String) : BackupUiState()
     }
 
@@ -151,6 +157,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _backupUiState = MutableStateFlow<BackupUiState>(BackupUiState.Idle)
     val backupUiState: StateFlow<BackupUiState> = _backupUiState.asStateFlow()
 
+    private val _accountSaveState = MutableStateFlow<AccountSaveUiState>(AccountSaveUiState.Idle)
+    val accountSaveState: StateFlow<AccountSaveUiState> = _accountSaveState.asStateFlow()
+
     private val _isOperationInProgress = MutableStateFlow(false)
     val isOperationInProgress: StateFlow<Boolean> = _isOperationInProgress.asStateFlow()
 
@@ -169,8 +178,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _uiMessage.value = message
     }
 
-    private fun loadSettings() {
-        viewModelScope.launch {
+    fun resetAccountSaveState() {
+        _accountSaveState.value = AccountSaveUiState.Idle
+    }
+
+    fun loadSettings() {
+        viewModelScope.launch(Dispatchers.IO) {
             val email = db.settingsAndBackupDao().getSettingValue("google_account_email")
             val cleanEmail = if (email.isNullOrBlank()) null else email
             _googleAccountEmail.value = cleanEmail
@@ -193,7 +206,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun onGoogleSignInSuccess(email: String) {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             val cleanEmail = email.trim()
             db.settingsAndBackupDao().setSettingValue(AppSettingsEntity("google_account_email", cleanEmail))
             BackupWorker.schedulePeriodicBackup(getApplication())
@@ -217,7 +230,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun signOutGoogleAccount() {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             db.settingsAndBackupDao().setSettingValue(AppSettingsEntity("google_account_email", ""))
             BackupWorker.cancelPeriodicBackup(getApplication())
             _googleAccountEmail.value = null
@@ -248,7 +261,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         categoryId: Long?,
         note: String
     ) {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             repository.insertTransaction(
                 TransactionEntity(
                     type = type,
@@ -265,7 +278,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun deleteTransaction(id: Long) {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             repository.softDeleteTransaction(id)
             _uiMessage.value = "已刪除交易"
         }
@@ -280,7 +293,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         accountId: Long,
         note: String
     ) {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             repository.createLoanTransaction(
                 contactName = contactName,
                 type = type,
@@ -301,7 +314,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         accountId: Long,
         note: String
     ) {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             val result = repository.addRepayment(loanId, amount, dateMillis, accountId, note)
             if (result.isSuccess) {
                 _uiMessage.value = "新增還款成功"
@@ -312,24 +325,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun deleteLoan(loanId: Long) {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             repository.deleteLoan(loanId)
             _uiMessage.value = "已刪除借貸紀錄"
         }
     }
 
     fun deleteLoanRepayment(repaymentId: Long) {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             repository.deleteRepayment(repaymentId)
             _uiMessage.value = "已刪除還款紀錄"
         }
     }
 
-    fun performBackup(password: String?) {
+    fun performBackup(password: String?, customDriveManager: DriveManager? = null) {
         if (_isOperationInProgress.value) return
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             val email = _googleAccountEmail.value
-            if (email.isNullOrEmpty()) {
+            if (email.isNullOrEmpty() && customDriveManager == null) {
                 _uiMessage.value = "請先連動 Google 帳號"
                 _backupUiState.value = BackupUiState.Error("請先連動 Google 帳號")
                 return@launch
@@ -339,14 +352,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _backupUiState.value = BackupUiState.BackingUp
 
             try {
-                val driveManager = GoogleDriveManager(getApplication(), email)
+                val driveManager = customDriveManager ?: GoogleDriveManager(getApplication(), email!!)
                 val backupRepo = BackupRestoreRepository(db, driveManager)
 
                 val result = backupRepo.backupToGoogleDrive(password)
                 if (result.isSuccess) {
-                    val metadata = result.getOrNull()
-                    _lastBackupTime.value = metadata?.backupTime
-                    _backupUiState.value = BackupUiState.Success
+                    val details = result.getOrThrow()
+                    _lastBackupTime.value = details.backupTime
+                    _backupUiState.value = BackupUiState.Success(details)
                     _uiMessage.value = "Google Drive 備份成功！"
                 } else {
                     val errorMsg = result.exceptionOrNull()?.message ?: "備份失敗"
@@ -363,10 +376,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun fetchCloudBackups() {
-        viewModelScope.launch {
+    fun fetchCloudBackups(customDriveManager: DriveManager? = null) {
+        viewModelScope.launch(Dispatchers.IO) {
             val email = _googleAccountEmail.value
-            if (email.isNullOrEmpty()) {
+            if (email.isNullOrEmpty() && customDriveManager == null) {
                 _cloudBackupListState.value = CloudBackupListState.Error("請先連結 Google 帳號")
                 return@launch
             }
@@ -375,7 +388,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _cloudBackups.value = emptyList()
 
             try {
-                val driveManager = GoogleDriveManager(getApplication(), email)
+                val driveManager = customDriveManager ?: GoogleDriveManager(getApplication(), email!!)
                 val backupRepo = BackupRestoreRepository(db, driveManager)
 
                 val result = backupRepo.listCloudBackups()
@@ -400,60 +413,63 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun restoreCloudBackup(fileId: String, password: String?) {
+    fun inspectBackupForRestore(fileId: String, password: String?, customDriveManager: DriveManager? = null) {
         if (_isOperationInProgress.value) return
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             val email = _googleAccountEmail.value
-            if (email.isNullOrEmpty()) {
+            if (email.isNullOrEmpty() && customDriveManager == null) {
                 _restoreUiState.value = RestoreUiState.Error("請先連動 Google 帳號")
                 return@launch
             }
 
             _isOperationInProgress.value = true
+            _restoreUiState.value = RestoreUiState.Downloading
             try {
-                val driveManager = GoogleDriveManager(getApplication(), email)
+                val driveManager = customDriveManager ?: GoogleDriveManager(getApplication(), email!!)
                 val backupRepo = BackupRestoreRepository(db, driveManager)
 
-                // 階段 1: 下載
-                _restoreUiState.value = RestoreUiState.Downloading
-                val downloadedBytes = try {
-                    driveManager.downloadBackupFile(fileId)
-                } catch (e: Exception) {
-                    val errorMsg = "下載備份檔案失敗: ${e.message ?: "網路或存取權限異常"}"
+                val result = backupRepo.inspectCloudBackup(fileId, password)
+                if (result.isSuccess) {
+                    val payload = result.getOrThrow()
+                    _restoreUiState.value = RestoreUiState.Preview(fileId, payload)
+                } else {
+                    val errorMsg = result.exceptionOrNull()?.message ?: "備份檔檢驗失敗"
                     _restoreUiState.value = RestoreUiState.Error(errorMsg)
-                    _uiMessage.value = errorMsg
-                    return@launch
+                    _uiMessage.value = "備份檢驗失敗: $errorMsg"
                 }
+            } catch (e: Exception) {
+                val errorMsg = e.message ?: "發生未知錯誤"
+                _restoreUiState.value = RestoreUiState.Error(errorMsg)
+                _uiMessage.value = "備份檢驗失敗: $errorMsg"
+            } finally {
+                _isOperationInProgress.value = false
+            }
+        }
+    }
 
-                // 階段 2: 解密與格式/關聯完整性驗證
-                _restoreUiState.value = RestoreUiState.DecryptingAndValidating
-                val payload = try {
-                    com.moneytracker.app.data.backup.BackupCryptoManager.decryptAndDeserializePayload(
-                        downloadedBytes,
-                        password
-                    )
-                } catch (e: Exception) {
-                    val errorMsg = e.message ?: "解密或驗證資料失敗"
-                    _restoreUiState.value = RestoreUiState.Error(errorMsg)
-                    _uiMessage.value = "還原失敗: $errorMsg"
-                    return@launch
-                }
+    fun restoreCloudBackup(fileId: String, password: String?, customDriveManager: DriveManager? = null) {
+        confirmAndRestoreCloudBackup(fileId, password, customDriveManager)
+    }
 
-                // 階段 3: 資料庫寫入
-                _restoreUiState.value = RestoreUiState.Restoring
-                val restoreResult = backupRepo.restoreFromPayload(payload)
+    fun confirmAndRestoreCloudBackup(fileId: String, password: String?, customDriveManager: DriveManager? = null) {
+        if (_isOperationInProgress.value) return
+        viewModelScope.launch(Dispatchers.IO) {
+            val email = _googleAccountEmail.value
+            if (email.isNullOrEmpty() && customDriveManager == null) {
+                _restoreUiState.value = RestoreUiState.Error("請先連動 Google 帳號")
+                return@launch
+            }
 
-                // 階段 4: 成果處理
+            _isOperationInProgress.value = true
+            _restoreUiState.value = RestoreUiState.Restoring
+            try {
+                val driveManager = customDriveManager ?: GoogleDriveManager(getApplication(), email!!)
+                val backupRepo = BackupRestoreRepository(db, driveManager)
+
+                val restoreResult = backupRepo.restoreFromCloudBackup(fileId, password)
                 if (restoreResult.isSuccess) {
+                    val summary = restoreResult.getOrThrow()
                     loadSettings()
-                    val summary = RestoreSummary(
-                        accountCount = payload.accounts.size,
-                        categoryCount = payload.categories.size,
-                        transactionCount = payload.transactions.size,
-                        contactCount = payload.contacts.size,
-                        loanCount = payload.loans.size,
-                        repaymentCount = payload.loanRepayments.size
-                    )
                     _restoreUiState.value = RestoreUiState.Success(summary)
                     _uiMessage.value = "資料還原成功！"
                 } else {
@@ -480,14 +496,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun addAccount(name: String, type: com.moneytracker.app.data.model.AccountType, initialBalance: Long) {
-        viewModelScope.launch {
-            repository.insertAccount(AccountEntity(name = name, type = type, initialBalance = initialBalance))
-            _uiMessage.value = "新增帳戶成功"
+        val cleanName = name.trim()
+        if (cleanName.isBlank()) {
+            _accountSaveState.value = AccountSaveUiState.Error("帳戶名稱不可為空")
+            return
+        }
+        _accountSaveState.value = AccountSaveUiState.Saving
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                repository.insertAccount(AccountEntity(name = cleanName, type = type, initialBalance = initialBalance))
+                _accountSaveState.value = AccountSaveUiState.Success
+                _uiMessage.value = "新增帳戶成功"
+            } catch (e: Exception) {
+                val errorMsg = e.message ?: "新增帳戶失敗"
+                _accountSaveState.value = AccountSaveUiState.Error(errorMsg)
+                _uiMessage.value = "新增帳戶失敗: $errorMsg"
+            }
         }
     }
 
     fun addCategory(name: String, type: TransactionType) {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             repository.insertCategory(CategoryEntity(name = name, type = type))
             _uiMessage.value = "新增分類成功"
         }
