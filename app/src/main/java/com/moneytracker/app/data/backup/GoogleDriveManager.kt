@@ -14,7 +14,7 @@ import kotlinx.coroutines.withContext
 class GoogleDriveManager(
     private val context: Context,
     private val accountName: String
-) {
+) : DriveManager {
     private val driveService: Drive by lazy {
         val credential = GoogleAccountCredential.usingOAuth2(
             context,
@@ -32,7 +32,7 @@ class GoogleDriveManager(
         .build()
     }
 
-    suspend fun uploadBackupFile(fileName: String, data: ByteArray): String = withContext(Dispatchers.IO) {
+    override suspend fun uploadBackupFile(fileName: String, data: ByteArray): String = withContext(Dispatchers.IO) {
         val fileMetadata = File().apply {
             name = fileName
             parents = listOf("appDataFolder")
@@ -46,7 +46,7 @@ class GoogleDriveManager(
         file.id
     }
 
-    suspend fun listBackupFiles(): List<CloudBackupInfo> = withContext(Dispatchers.IO) {
+    override suspend fun listBackupFiles(): List<CloudBackupInfo> = withContext(Dispatchers.IO) {
         val result = driveService.files().list()
             .setSpaces("appDataFolder")
             .setFields("nextPageToken, files(id, name, createdTime, size)")
@@ -63,7 +63,7 @@ class GoogleDriveManager(
         } ?: emptyList()
     }
 
-    suspend fun downloadBackupFile(fileId: String): ByteArray = withContext(Dispatchers.IO) {
+    override suspend fun downloadBackupFile(fileId: String): ByteArray = withContext(Dispatchers.IO) {
         val outputStream = java.io.ByteArrayOutputStream()
         driveService.files().get(fileId).executeMediaAndDownloadTo(outputStream)
         outputStream.toByteArray()

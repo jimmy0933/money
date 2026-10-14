@@ -2,14 +2,14 @@ package com.moneytracker.app
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
-import com.moneytracker.app.data.model.AccountType
 import com.moneytracker.app.data.model.LoanType
 import com.moneytracker.app.data.model.TransactionType
 import com.moneytracker.app.ui.viewmodel.MainViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.test.runTest
@@ -26,17 +26,18 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class MainViewModelTest {
 
-    private val testDispatcher = StandardTestDispatcher()
+    private val testDispatcher = UnconfinedTestDispatcher()
     private lateinit var viewModel: MainViewModel
 
     @Before
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
         val context = ApplicationProvider.getApplicationContext<Context>() as android.app.Application
-        viewModel = MainViewModel(context)
         kotlinx.coroutines.runBlocking {
-            com.moneytracker.app.data.db.AppDatabase.seedDefaultData(viewModel.db)
+            val db = com.moneytracker.app.data.db.AppDatabase.getDatabase(context)
+            com.moneytracker.app.data.db.AppDatabase.seedDefaultData(db)
         }
+        viewModel = MainViewModel(context)
     }
 
     @After
@@ -58,9 +59,9 @@ class MainViewModelTest {
             categoryId = null,
             note = "測試 ViewModel 記帳"
         )
-        testDispatcher.scheduler.advanceUntilIdle()
+        runBlocking { kotlinx.coroutines.delay(200) }
 
-        val txs = viewModel.transactions.first { it.isNotEmpty() }
+        val txs = viewModel.transactions.first { list -> list.any { it.note == "測試 ViewModel 記帳" } }
         assertTrue(txs.any { it.note == "測試 ViewModel 記帳" && it.amount == 150L })
     }
 
@@ -79,7 +80,6 @@ class MainViewModelTest {
             accountId = defaultAccount.id,
             note = "第一次借出"
         )
-        testDispatcher.scheduler.advanceUntilIdle()
 
         // 再借出 2,000 給小明
         viewModel.addLoan(
@@ -91,7 +91,6 @@ class MainViewModelTest {
             accountId = defaultAccount.id,
             note = "第二次借出"
         )
-        testDispatcher.scheduler.advanceUntilIdle()
 
         // 向小明借入 3,000
         viewModel.addLoan(
@@ -103,9 +102,10 @@ class MainViewModelTest {
             accountId = defaultAccount.id,
             note = "向小明借款"
         )
-        testDispatcher.scheduler.advanceUntilIdle()
 
-        val summaries = viewModel.contactSummaries.first { it.isNotEmpty() }
+        val summaries = viewModel.contactSummaries.first { list ->
+            list.any { it.contact.name == "小明" && it.totalLendAmount == 12000L && it.totalBorrowAmount == 3000L }
+        }
         val xiaoming = summaries.find { it.contact.name == "小明" }
 
         assertNotNull(xiaoming)
@@ -133,24 +133,24 @@ class MainViewModelTest {
             categoryId = null,
             note = "離線資料測試"
         )
-        testDispatcher.scheduler.advanceUntilIdle()
+        runBlocking { kotlinx.coroutines.delay(200) }
 
         // 執行無網路/無帳號備份 (預期報告錯誤訊息)
         viewModel.performBackup(password = null)
-        testDispatcher.scheduler.advanceUntilIdle()
+        runBlocking { kotlinx.coroutines.delay(200) }
 
         val msg = viewModel.uiMessage.value
         assertNotNull(msg)
 
         // 驗證本機資料依然完好無損
-        val txs = viewModel.transactions.first { it.isNotEmpty() }
+        val txs = viewModel.transactions.first { list -> list.any { it.note == "離線資料測試" } }
         assertTrue(txs.any { it.note == "離線資料測試" })
     }
 
     @Test
     fun testFetchCloudBackupsWithoutAccountErrorState() = runTest {
         viewModel.fetchCloudBackups()
-        testDispatcher.scheduler.advanceUntilIdle()
+        runBlocking { kotlinx.coroutines.delay(200) }
 
         val listState = viewModel.cloudBackupListState.value
         assertTrue(listState is MainViewModel.CloudBackupListState.Error)
@@ -159,7 +159,7 @@ class MainViewModelTest {
     @Test
     fun testRestoreWithoutAccountErrorState() = runTest {
         viewModel.restoreCloudBackup("fake_file_id", null)
-        testDispatcher.scheduler.advanceUntilIdle()
+        runBlocking { kotlinx.coroutines.delay(200) }
 
         val restoreState = viewModel.restoreUiState.value
         assertTrue(restoreState is MainViewModel.RestoreUiState.Error)
