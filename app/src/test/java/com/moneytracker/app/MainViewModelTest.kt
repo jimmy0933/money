@@ -2,6 +2,8 @@ package com.moneytracker.app
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import com.moneytracker.app.data.db.AppDatabase
+import com.moneytracker.app.data.db.DatabaseInitializer
 import com.moneytracker.app.data.model.LoanType
 import com.moneytracker.app.data.model.TransactionType
 import com.moneytracker.app.ui.viewmodel.MainViewModel
@@ -34,8 +36,9 @@ class MainViewModelTest {
         Dispatchers.setMain(testDispatcher)
         val context = ApplicationProvider.getApplicationContext<Context>() as android.app.Application
         kotlinx.coroutines.runBlocking {
-            val db = com.moneytracker.app.data.db.AppDatabase.getDatabase(context)
-            com.moneytracker.app.data.db.AppDatabase.seedDefaultData(db)
+            DatabaseInitializer.resetInitializationStateForTest()
+            val db = AppDatabase.getDatabase(context)
+            DatabaseInitializer.ensureInitialized(db)
         }
         viewModel = MainViewModel(context)
     }

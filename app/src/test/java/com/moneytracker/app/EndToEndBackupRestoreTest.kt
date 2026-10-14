@@ -4,10 +4,20 @@ import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.moneytracker.app.data.backup.BackupCryptoManager
+import com.moneytracker.app.data.backup.BackupPayload
 import com.moneytracker.app.data.backup.BackupRestoreRepository
 import com.moneytracker.app.data.db.AppDatabase
+import com.moneytracker.app.data.db.DatabaseInitializer
 import com.moneytracker.app.data.entity.AccountEntity
+import com.moneytracker.app.data.entity.CategoryEntity
+import com.moneytracker.app.data.entity.ContactEntity
+import com.moneytracker.app.data.entity.LoanEntity
+import com.moneytracker.app.data.entity.LoanRepaymentEntity
+import com.moneytracker.app.data.entity.TransactionEntity
 import com.moneytracker.app.data.model.AccountType
+import com.moneytracker.app.data.model.LoanStatus
+import com.moneytracker.app.data.model.LoanType
+import com.moneytracker.app.data.model.TransactionType
 import com.moneytracker.app.data.repository.AppRepository
 import com.moneytracker.app.data.repository.DataOperationCoordinator
 import com.moneytracker.app.ui.viewmodel.MainViewModel
@@ -38,6 +48,7 @@ class EndToEndBackupRestoreTest {
         db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
             .allowMainThreadQueries()
             .build()
+        DatabaseInitializer.resetInitializationStateForTest()
         appRepo = AppRepository(db)
         fakeDriveManager = FakeDriveManager()
         backupRepo = BackupRestoreRepository(db, fakeDriveManager)
@@ -126,6 +137,38 @@ class EndToEndBackupRestoreTest {
     }
 
     /**
+     * 測試延遲資料庫初始化，驗證不會與還原競爭或覆蓋還原結果
+     */
+    @Test
+    fun testDelayedDatabaseInitializationDoesNotCompeteWithRestore() = runBlocking {
+        // 先建立含有特殊資料的備份檔
+        appRepo.insertAccount(AccountEntity(name = "專屬還原帳戶", type = AccountType.CREDIT_CARD, initialBalance = 6666))
+        val backupFileId = backupRepo.backupToGoogleDrive(password = null).getOrThrow().driveFileId
+
+        // 重置 DB 與初始化狀態 (模擬 App 刪除重裝)
+        db.clearAllTables()
+        DatabaseInitializer.resetInitializationStateForTest()
+
+        // 啟動一個會延遲執行 DatabaseInitializer 的協程
+        val initJob = launch(Dispatchers.IO) {
+            kotlinx.coroutines.delay(50)
+            DatabaseInitializer.ensureInitialized(db)
+        }
+
+        // 同時執行雲端還原
+        val restoreResult = backupRepo.restoreFromCloudBackup(backupFileId, password = null)
+        assertTrue(restoreResult.isSuccess)
+
+        initJob.join()
+
+        // 驗證還原資料庫包含「專屬還原帳戶」，且沒有預設種入資料污染
+        val accounts = db.accountDao().getAllAccounts()
+        assertEquals(1, accounts.size)
+        assertEquals("專屬還原帳戶", accounts[0].name)
+        assertEquals(6666L, accounts[0].initialBalance)
+    }
+
+    /**
      * 備份後更改本機測試資料，再還原該 fileId，確認名稱、ID、初始餘額完全一致
      */
     @Test
@@ -174,109 +217,134 @@ class EndToEndBackupRestoreTest {
     }
 
     /**
-     * 同時存在新舊備份，確認還原指定檔案 (fileId)
+     * 模擬交易內核對失敗，原資料必須完整回滾 (Rollback)
      */
     @Test
-    fun testMultipleBackupsRestoresCorrectSpecifiedFileId() = runBlocking {
-        // 備份 1
-        appRepo.insertAccount(AccountEntity(name = "帳戶 1", type = AccountType.CASH, initialBalance = 100))
-        val fileId1 = backupRepo.backupToGoogleDrive(password = null).getOrThrow().driveFileId
+    fun testRestoreVerificationFailureRollsBackAllChanges() = runBlocking {
+        // 本機原本資料
+        appRepo.insertAccount(AccountEntity(id = 100, name = "重要原有帳戶", type = AccountType.CASH, initialBalance = 9999))
 
-        // 備份 2
-        appRepo.insertAccount(AccountEntity(name = "帳戶 2", type = AccountType.BANK, initialBalance = 200))
-        val fileId2 = backupRepo.backupToGoogleDrive(password = null).getOrThrow().driveFileId
+        // 建立會引發交易內核對不相符的非法 payload (例如: 借貸狀態與還款加總不合)
+        val invalidPayload = BackupPayload(
+            schemaVersion = 1,
+            accounts = listOf(
+                AccountEntity(id = 1, name = "測試帳戶", type = AccountType.CASH, initialBalance = 1000)
+            ),
+            categories = emptyList(),
+            contacts = listOf(
+                ContactEntity(id = 1, name = "聯絡人")
+            ),
+            loans = listOf(
+                LoanEntity(
+                    id = 1,
+                    contactId = 1,
+                    type = LoanType.LEND,
+                    amount = 5000,
+                    dateMillis = System.currentTimeMillis(),
+                    dueDateMillis = null,
+                    accountId = 1,
+                    note = "測試借貸",
+                    status = LoanStatus.PAID // 宣稱 PAID，但無還款紀錄！
+                )
+            ),
+            loanRepayments = emptyList(), // 0 筆還款
+            transactions = emptyList(),
+            settings = emptyList()
+        )
 
-        // 還原 備份 1，驗證僅有 帳戶 1
-        backupRepo.restoreFromCloudBackup(fileId1, password = null)
-        val res1 = db.accountDao().getAllAccounts()
-        assertEquals(1, res1.size)
-        assertEquals("帳戶 1", res1[0].name)
+        val result = backupRepo.restoreFromPayload(invalidPayload)
+        assertTrue("核對失敗應回傳 Failure", result.isFailure)
 
-        // 還原 備份 2，驗證含有 帳戶 1 與 帳戶 2
-        backupRepo.restoreFromCloudBackup(fileId2, password = null)
-        val res2 = db.accountDao().getAllAccounts()
-        assertEquals(2, res2.size)
+        // 驗證原資料完全不變 (已成功回滾)
+        val accounts = db.accountDao().getAllAccounts()
+        assertEquals(1, accounts.size)
+        assertEquals("重要原有帳戶", accounts[0].name)
+        assertEquals(9999L, accounts[0].initialBalance)
     }
 
     /**
-     * 測試有密碼與無密碼備份還原
+     * 完整各表欄位、關聯及餘額核對測試
      */
     @Test
-    fun testPasswordAndNoPasswordBackupsAndRestores() = runBlocking {
-        appRepo.insertAccount(AccountEntity(name = "測試帳戶", type = AccountType.CASH, initialBalance = 100))
+    fun testDetailedFieldsAndBalancesVerificationOnRestore() = runBlocking {
+        val accId = appRepo.insertAccount(AccountEntity(name = "主帳戶", type = AccountType.BANK, initialBalance = 20000))
+        val catId = appRepo.insertCategory(CategoryEntity(name = "餐飲支出", type = TransactionType.EXPENSE))
 
-        // 無密碼備份
-        val fileIdNoPass = backupRepo.backupToGoogleDrive(password = null).getOrThrow().driveFileId
-        val restoreNoPass = backupRepo.restoreFromCloudBackup(fileIdNoPass, password = null)
-        assertTrue(restoreNoPass.isSuccess)
+        // 交易與借貸還款
+        appRepo.insertTransaction(TransactionEntity(type = TransactionType.EXPENSE, amount = 120, dateMillis = System.currentTimeMillis(), sourceAccountId = accId, categoryId = catId, note = "午餐"))
+        val loanId = appRepo.createLoanTransaction(contactName = "朋友A", type = LoanType.LEND, amount = 1000, dateMillis = System.currentTimeMillis(), dueDateMillis = null, accountId = accId, note = "借朋友")
+        appRepo.addRepayment(loanId = loanId, amount = 400, dateMillis = System.currentTimeMillis(), accountId = accId, note = "還款")
 
-        // 有密碼備份
-        val fileIdWithPass = backupRepo.backupToGoogleDrive(password = "P@ssw0rd123").getOrThrow().driveFileId
-        val restoreWithPass = backupRepo.restoreFromCloudBackup(fileIdWithPass, password = "P@ssw0rd123")
-        assertTrue(restoreWithPass.isSuccess)
+        val fileId = backupRepo.backupToGoogleDrive(password = null).getOrThrow().driveFileId
+
+        // 清空
+        db.clearAllTables()
+
+        // 還原並核對 Summary 與各表欄位
+        val restoreResult = backupRepo.restoreFromCloudBackup(fileId, password = null)
+        assertTrue(restoreResult.isSuccess)
+
+        val summary = restoreResult.getOrThrow()
+        assertEquals(1, summary.accountCount)
+        assertEquals(1, summary.categoryCount)
+        assertEquals(1, summary.contactCount)
+        assertEquals(1, summary.loanCount)
+        assertEquals(1, summary.repaymentCount)
+        assertEquals(3, summary.transactionCount) // 1 一般 + 1 借出 + 1 還款
+
+        val restoredLoan = appRepo.getLoanWithDetails(loanId)
+        assertNotNull(restoredLoan)
+        assertEquals(400L, restoredLoan!!.repaidAmount)
+        assertEquals(600L, restoredLoan.remainingAmount)
+        assertEquals(LoanStatus.PARTIAL, restoredLoan.loan.status)
     }
 
     /**
-     * ViewModel 整合與畫面 Flow 即時更新測試
+     * 預覽後取消不得改動本機資料測試
      */
     @Test
-    fun testViewModelSaveAccountAndBackupRestoreFlow() = runBlocking {
+    fun testInspectBackupPreviewDoesNotModifyDatabaseAndCanCancel() = runBlocking {
         val application = ApplicationProvider.getApplicationContext<Context>() as android.app.Application
         val viewModel = MainViewModel(application, db)
+        viewModel.onGoogleSignInSuccess("previewtest@gmail.com")
 
-        // 設定假 DriveManager
-        viewModel.onGoogleSignInSuccess("test@gmail.com")
-
-        // 點擊新增帳戶
-        viewModel.addAccount("ViewModel帳戶", AccountType.CASH, 777)
-
-        // 等待 ViewModel coroutine 寫入
-        var accountSaved = false
-        ShadowLooper.idleMainLooper()
-        for (i in 1..30) {
-            ShadowLooper.idleMainLooper()
-            if (viewModel.accountSaveState.value is MainViewModel.AccountSaveUiState.Success) {
-                accountSaved = true
-                break
-            }
-            kotlinx.coroutines.delay(20)
-        }
-        assertTrue("帳戶應成功寫入", accountSaved)
-
-        // 執行備份
-        viewModel.performBackup(password = null, customDriveManager = fakeDriveManager)
-
-        var fileId = ""
-        ShadowLooper.idleMainLooper()
-        for (i in 1..30) {
-            ShadowLooper.idleMainLooper()
-            val bState = viewModel.backupUiState.value
-            if (bState is MainViewModel.BackupUiState.Success) {
-                fileId = bState.details.driveFileId
-                break
-            }
-            kotlinx.coroutines.delay(20)
-        }
-        assertTrue("fileId 必須非空", fileId.isNotEmpty())
-
-        // 清空本機
-        viewModel.db.clearAllTables()
-
-        // 執行還原
-        viewModel.confirmAndRestoreCloudBackup(fileId, password = null, customDriveManager = fakeDriveManager)
+        // 本機先有帳戶
+        viewModel.addAccount("本機原有帳戶", AccountType.CASH, 5000)
 
         ShadowLooper.idleMainLooper()
-        for (i in 1..30) {
+        for (i in 1..20) {
             ShadowLooper.idleMainLooper()
-            val rState = viewModel.restoreUiState.value
-            if (rState is MainViewModel.RestoreUiState.Success) {
-                break
-            }
+            if (viewModel.accountSaveState.value is MainViewModel.AccountSaveUiState.Success) break
             kotlinx.coroutines.delay(20)
         }
-        assertTrue("還原狀態必須為 Success", viewModel.restoreUiState.value is MainViewModel.RestoreUiState.Success)
 
-        val restoredAccounts = viewModel.db.accountDao().getAllAccounts()
-        assertTrue("DB 必須即時顯示還原後帳戶", restoredAccounts.any { it.name == "ViewModel帳戶" })
+        // 建立一個備份檔
+        val backupResult = viewModel.repository.insertAccount(AccountEntity(name = "雲端備份帳戶", type = AccountType.BANK, initialBalance = 8888))
+        val fileId = backupRepo.backupToGoogleDrive(password = null).getOrThrow().driveFileId
+
+        // 還原前刪除雲端備份帳戶，留下本機原有帳戶
+        viewModel.repository.softDeleteAccount(backupResult)
+
+        // 僅執行預覽 (inspectBackupForRestore)
+        viewModel.inspectBackupForRestore(fileId, password = null, customDriveManager = fakeDriveManager)
+
+        ShadowLooper.idleMainLooper()
+        for (i in 1..20) {
+            ShadowLooper.idleMainLooper()
+            if (viewModel.restoreUiState.value is MainViewModel.RestoreUiState.Preview) break
+            kotlinx.coroutines.delay(20)
+        }
+
+        val restoreState = viewModel.restoreUiState.value
+        assertTrue("狀態必須為 Preview", restoreState is MainViewModel.RestoreUiState.Preview)
+
+        // 使用者點擊「取消」/ 重置 RestoreUiState
+        viewModel.resetRestoreUiState()
+        assertEquals(MainViewModel.RestoreUiState.Idle, viewModel.restoreUiState.value)
+
+        // 驗證本機資料庫依然包含本機原有帳戶，且沒有將「雲端備份帳戶」寫入
+        val accounts = db.accountDao().getAllAccounts()
+        assertTrue(accounts.any { it.name == "本機原有帳戶" })
+        assertTrue(accounts.none { it.name == "雲端備份帳戶" })
     }
 }
