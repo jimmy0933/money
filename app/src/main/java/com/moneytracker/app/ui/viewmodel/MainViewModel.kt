@@ -32,7 +32,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.Calendar
 
-class MainViewModel(
+class MainViewModel @JvmOverloads constructor(
     application: Application,
     database: AppDatabase? = null
 ) : AndroidViewModel(application) {
