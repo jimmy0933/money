@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.moneytracker.app.data.db.AppDatabase
+import com.moneytracker.app.data.db.DatabaseInitializer
 import com.moneytracker.app.data.entity.AccountEntity
 import com.moneytracker.app.data.entity.CategoryEntity
 import com.moneytracker.app.data.entity.TransactionEntity
@@ -35,6 +36,7 @@ class RoomDatabaseTest {
         db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
             .allowMainThreadQueries()
             .build()
+        DatabaseInitializer.resetInitializationStateForTest()
         repository = AppRepository(db)
     }
 
@@ -45,7 +47,7 @@ class RoomDatabaseTest {
 
     @Test
     fun testDefaultDataSeeding() = runBlocking {
-        AppDatabase.seedDefaultData(db)
+        DatabaseInitializer.ensureInitialized(db)
 
         val accounts = db.accountDao().getAllAccounts()
         assertTrue(accounts.isNotEmpty())

@@ -11,6 +11,7 @@ import com.moneytracker.app.data.backup.DriveManager
 import com.moneytracker.app.data.backup.GoogleDriveManager
 import com.moneytracker.app.data.backup.VerifiedRestoreSummary
 import com.moneytracker.app.data.db.AppDatabase
+import com.moneytracker.app.data.db.DatabaseInitializer
 import com.moneytracker.app.data.entity.AccountEntity
 import com.moneytracker.app.data.entity.AppSettingsEntity
 import com.moneytracker.app.data.entity.CategoryEntity
@@ -184,6 +185,7 @@ class MainViewModel @JvmOverloads constructor(
 
     fun loadSettings() {
         viewModelScope.launch(Dispatchers.IO) {
+            DatabaseInitializer.ensureInitialized(db)
             val email = db.settingsAndBackupDao().getSettingValue("google_account_email")
             val cleanEmail = if (email.isNullOrBlank()) null else email
             _googleAccountEmail.value = cleanEmail
@@ -207,6 +209,7 @@ class MainViewModel @JvmOverloads constructor(
 
     fun onGoogleSignInSuccess(email: String) {
         viewModelScope.launch(Dispatchers.IO) {
+            DatabaseInitializer.ensureInitialized(db)
             val cleanEmail = email.trim()
             db.settingsAndBackupDao().setSettingValue(AppSettingsEntity("google_account_email", cleanEmail))
             BackupWorker.schedulePeriodicBackup(getApplication())
@@ -231,6 +234,7 @@ class MainViewModel @JvmOverloads constructor(
 
     fun signOutGoogleAccount() {
         viewModelScope.launch(Dispatchers.IO) {
+            DatabaseInitializer.ensureInitialized(db)
             db.settingsAndBackupDao().setSettingValue(AppSettingsEntity("google_account_email", ""))
             BackupWorker.cancelPeriodicBackup(getApplication())
             _googleAccountEmail.value = null
@@ -262,6 +266,7 @@ class MainViewModel @JvmOverloads constructor(
         note: String
     ) {
         viewModelScope.launch(Dispatchers.IO) {
+            DatabaseInitializer.ensureInitialized(db)
             repository.insertTransaction(
                 TransactionEntity(
                     type = type,
@@ -279,6 +284,7 @@ class MainViewModel @JvmOverloads constructor(
 
     fun deleteTransaction(id: Long) {
         viewModelScope.launch(Dispatchers.IO) {
+            DatabaseInitializer.ensureInitialized(db)
             repository.softDeleteTransaction(id)
             _uiMessage.value = "已刪除交易"
         }
@@ -294,6 +300,7 @@ class MainViewModel @JvmOverloads constructor(
         note: String
     ) {
         viewModelScope.launch(Dispatchers.IO) {
+            DatabaseInitializer.ensureInitialized(db)
             repository.createLoanTransaction(
                 contactName = contactName,
                 type = type,
@@ -315,6 +322,7 @@ class MainViewModel @JvmOverloads constructor(
         note: String
     ) {
         viewModelScope.launch(Dispatchers.IO) {
+            DatabaseInitializer.ensureInitialized(db)
             val result = repository.addRepayment(loanId, amount, dateMillis, accountId, note)
             if (result.isSuccess) {
                 _uiMessage.value = "新增還款成功"
@@ -326,6 +334,7 @@ class MainViewModel @JvmOverloads constructor(
 
     fun deleteLoan(loanId: Long) {
         viewModelScope.launch(Dispatchers.IO) {
+            DatabaseInitializer.ensureInitialized(db)
             repository.deleteLoan(loanId)
             _uiMessage.value = "已刪除借貸紀錄"
         }
@@ -333,6 +342,7 @@ class MainViewModel @JvmOverloads constructor(
 
     fun deleteLoanRepayment(repaymentId: Long) {
         viewModelScope.launch(Dispatchers.IO) {
+            DatabaseInitializer.ensureInitialized(db)
             repository.deleteRepayment(repaymentId)
             _uiMessage.value = "已刪除還款紀錄"
         }
@@ -341,6 +351,7 @@ class MainViewModel @JvmOverloads constructor(
     fun performBackup(password: String?, customDriveManager: DriveManager? = null) {
         if (_isOperationInProgress.value) return
         viewModelScope.launch(Dispatchers.IO) {
+            DatabaseInitializer.ensureInitialized(db)
             val email = _googleAccountEmail.value
             if (email.isNullOrEmpty() && customDriveManager == null) {
                 _uiMessage.value = "請先連動 Google 帳號"
@@ -378,6 +389,7 @@ class MainViewModel @JvmOverloads constructor(
 
     fun fetchCloudBackups(customDriveManager: DriveManager? = null) {
         viewModelScope.launch(Dispatchers.IO) {
+            DatabaseInitializer.ensureInitialized(db)
             val email = _googleAccountEmail.value
             if (email.isNullOrEmpty() && customDriveManager == null) {
                 _cloudBackupListState.value = CloudBackupListState.Error("請先連結 Google 帳號")
@@ -416,6 +428,7 @@ class MainViewModel @JvmOverloads constructor(
     fun inspectBackupForRestore(fileId: String, password: String?, customDriveManager: DriveManager? = null) {
         if (_isOperationInProgress.value) return
         viewModelScope.launch(Dispatchers.IO) {
+            DatabaseInitializer.ensureInitialized(db)
             val email = _googleAccountEmail.value
             if (email.isNullOrEmpty() && customDriveManager == null) {
                 _restoreUiState.value = RestoreUiState.Error("請先連動 Google 帳號")
@@ -454,6 +467,7 @@ class MainViewModel @JvmOverloads constructor(
     fun confirmAndRestoreCloudBackup(fileId: String, password: String?, customDriveManager: DriveManager? = null) {
         if (_isOperationInProgress.value) return
         viewModelScope.launch(Dispatchers.IO) {
+            DatabaseInitializer.ensureInitialized(db)
             val email = _googleAccountEmail.value
             if (email.isNullOrEmpty() && customDriveManager == null) {
                 _restoreUiState.value = RestoreUiState.Error("請先連動 Google 帳號")
@@ -503,6 +517,7 @@ class MainViewModel @JvmOverloads constructor(
         }
         _accountSaveState.value = AccountSaveUiState.Saving
         viewModelScope.launch(Dispatchers.IO) {
+            DatabaseInitializer.ensureInitialized(db)
             try {
                 repository.insertAccount(AccountEntity(name = cleanName, type = type, initialBalance = initialBalance))
                 _accountSaveState.value = AccountSaveUiState.Success
@@ -517,6 +532,7 @@ class MainViewModel @JvmOverloads constructor(
 
     fun addCategory(name: String, type: TransactionType) {
         viewModelScope.launch(Dispatchers.IO) {
+            DatabaseInitializer.ensureInitialized(db)
             repository.insertCategory(CategoryEntity(name = name, type = type))
             _uiMessage.value = "新增分類成功"
         }

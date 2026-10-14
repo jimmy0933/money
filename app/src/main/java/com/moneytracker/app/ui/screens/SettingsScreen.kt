@@ -513,11 +513,13 @@ fun SettingsScreen(viewModel: MainViewModel) {
                             ) {
                                 Column(modifier = Modifier.padding(8.dp)) {
                                     Text("備份檔驗證通過（預覽資訊）：", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                    Text("狀況：【尚未寫入資料庫】", color = Color(0xFFD84315), fontWeight = FontWeight.Bold, fontSize = 12.sp)
                                     Text("備份時間: ${dateFormat.format(Date(payload.createdAt))}", fontSize = 11.sp)
-                                    Text("帳戶筆數: ${payload.accounts.size} 筆 | 分類: ${payload.categories.size} 筆", fontSize = 11.sp)
-                                    Text("交易筆數: ${payload.transactions.size} 筆 | 借貸: ${payload.loans.size} 筆", fontSize = 11.sp)
+                                    Text("帳戶: ${payload.accounts.size} 筆 | 分類: ${payload.categories.size} 筆", fontSize = 11.sp)
+                                    Text("交易: ${payload.transactions.size} 筆 | 借貸: ${payload.loans.size} 筆", fontSize = 11.sp)
+                                    Text("聯絡人: ${payload.contacts.size} 筆 | 還款: ${payload.loanRepayments.size} 筆", fontSize = 11.sp)
                                     Spacer(modifier = Modifier.height(4.dp))
-                                    Text("確認要以此備份檔內容完全覆蓋本機資料嗎？", color = Color.Red, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    Text("提示：目前尚未還原！點擊下方「確認覆蓋還原」按鈕才會將資料覆蓋寫入本機資料庫。", color = Color.Red, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
                         }
