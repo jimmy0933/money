@@ -76,6 +76,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
     val backupUiState by viewModel.backupUiState.collectAsState()
     val accountSaveState by viewModel.accountSaveState.collectAsState()
     val isOperationInProgress by viewModel.isOperationInProgress.collectAsState()
+    val isRestorePending by viewModel.isRestorePending.collectAsState()
 
     val accounts by viewModel.accounts.collectAsState()
     val categories by viewModel.categories.collectAsState()
@@ -144,6 +145,52 @@ fun SettingsScreen(viewModel: MainViewModel) {
     ) {
         item {
             Text("設定與雲端備份", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        }
+
+        // 重裝/切換帳號 待還原提示卡片
+        if (isRestorePending && !googleAccountEmail.isNullOrBlank()) {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text("尚未完成雲端資料還原選擇", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            "檢測到此 Google 帳號 ($googleAccountEmail) 在此裝置尚未選擇是否還原既有備份。在您完成選擇前，已自動暫停上傳自動備份，防止預設初始資料覆蓋雲端歷史備份。",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Button(
+                                onClick = {
+                                    viewModel.resetRestoreUiState()
+                                    viewModel.fetchCloudBackups()
+                                    showRestoreDialog = true
+                                },
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                            ) {
+                                Text("還原既有資料")
+                            }
+
+                            Button(
+                                onClick = { viewModel.dismissRestorePendingAndStartFresh() },
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color.DarkGray)
+                            ) {
+                                Text("以目前資料開始")
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         // Google 雲端備份狀態卡片
@@ -467,8 +514,20 @@ fun SettingsScreen(viewModel: MainViewModel) {
                                         )
                                     ) {
                                         Column(modifier = Modifier.padding(8.dp)) {
-                                            Text(file.fileName, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(file.fileName, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                                if (file.isDefaultOnly) {
+                                                    Text("【預設初始資料】", color = Color(0xFFD32F2F), fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                                }
+                                            }
                                             Text("日期: ${dateFormat.format(Date(file.createdTimeMillis))}", fontSize = 11.sp)
+                                            if (file.summaryText.isNotBlank()) {
+                                                Text("摘要: ${file.summaryText}", fontSize = 11.sp, color = if (file.isDefaultOnly) Color.Red else Color.DarkGray)
+                                            }
                                             Text("File ID: ${file.fileId}", fontSize = 10.sp, color = Color.Gray)
                                         }
                                     }

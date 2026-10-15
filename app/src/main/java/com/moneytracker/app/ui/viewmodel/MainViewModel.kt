@@ -164,6 +164,9 @@ class MainViewModel @JvmOverloads constructor(
     private val _isOperationInProgress = MutableStateFlow(false)
     val isOperationInProgress: StateFlow<Boolean> = _isOperationInProgress.asStateFlow()
 
+    private val _isRestorePending = MutableStateFlow(false)
+    val isRestorePending: StateFlow<Boolean> = _isRestorePending.asStateFlow()
+
     private val _uiMessage = MutableStateFlow<String?>(null)
     val uiMessage: StateFlow<String?> = _uiMessage.asStateFlow()
 
@@ -190,9 +193,15 @@ class MainViewModel @JvmOverloads constructor(
             val cleanEmail = if (email.isNullOrBlank()) null else email
             _googleAccountEmail.value = cleanEmail
 
+            val backupRepo = BackupRestoreRepository(db)
+            val pending = backupRepo.isRestorePending(cleanEmail)
+            _isRestorePending.value = pending
+
             if (cleanEmail != null) {
                 _googleAuthState.value = GoogleAuthState.LOGGED_IN
-                BackupWorker.schedulePeriodicBackup(getApplication())
+                if (!pending) {
+                    BackupWorker.schedulePeriodicBackup(getApplication())
+                }
             } else {
                 _googleAuthState.value = GoogleAuthState.LOGGED_OUT
             }
@@ -211,11 +220,32 @@ class MainViewModel @JvmOverloads constructor(
         viewModelScope.launch(Dispatchers.IO) {
             DatabaseInitializer.ensureInitialized(db)
             val cleanEmail = email.trim()
+            val backupRepo = BackupRestoreRepository(db)
+
+            val previousEmail = db.settingsAndBackupDao().getSettingValue("google_account_email")
+            val isAccountChanged = previousEmail.isNullOrBlank() || !previousEmail.equals(cleanEmail, ignoreCase = true)
+
             db.settingsAndBackupDao().setSettingValue(AppSettingsEntity("google_account_email", cleanEmail))
-            BackupWorker.schedulePeriodicBackup(getApplication())
             _googleAccountEmail.value = cleanEmail
             _googleAuthState.value = GoogleAuthState.LOGGED_IN
             _googleAuthErrorMessage.value = null
+
+            // 若為新帳號或首次登入，預設設為 restorePending = true，防止上傳預設資料
+            if (isAccountChanged && !backupRepo.isRestorePending(cleanEmail)) {
+                // 檢查是否已有選擇紀錄，若無則標記Pending
+                val settingKey = "restore_pending_${cleanEmail.lowercase()}"
+                if (db.settingsAndBackupDao().getSettingValue(settingKey) == null) {
+                    backupRepo.setRestorePending(cleanEmail, true)
+                }
+            }
+
+            val pending = backupRepo.isRestorePending(cleanEmail)
+            _isRestorePending.value = pending
+
+            if (!pending) {
+                BackupWorker.schedulePeriodicBackup(getApplication())
+            }
+
             _uiMessage.value = "已成功連結 Google 帳號：$cleanEmail"
         }
     }
@@ -348,6 +378,20 @@ class MainViewModel @JvmOverloads constructor(
         }
     }
 
+    fun dismissRestorePendingAndStartFresh() {
+        viewModelScope.launch(Dispatchers.IO) {
+            DatabaseInitializer.ensureInitialized(db)
+            val email = _googleAccountEmail.value
+            if (!email.isNullOrBlank()) {
+                val backupRepo = BackupRestoreRepository(db)
+                backupRepo.setRestorePending(email, false)
+                _isRestorePending.value = false
+                BackupWorker.schedulePeriodicBackup(getApplication())
+                _uiMessage.value = "已選擇以目前資料開始記帳"
+            }
+        }
+    }
+
     fun performBackup(password: String?, customDriveManager: DriveManager? = null) {
         if (_isOperationInProgress.value) return
         viewModelScope.launch(Dispatchers.IO) {
@@ -356,6 +400,13 @@ class MainViewModel @JvmOverloads constructor(
             if (email.isNullOrEmpty() && customDriveManager == null) {
                 _uiMessage.value = "請先連動 Google 帳號"
                 _backupUiState.value = BackupUiState.Error("請先連動 Google 帳號")
+                return@launch
+            }
+
+            val tempBackupRepo = BackupRestoreRepository(db)
+            if (tempBackupRepo.isRestorePending(email)) {
+                _uiMessage.value = "尚待選擇是否還原既有雲端備份，暫停自動與手動備份"
+                _backupUiState.value = BackupUiState.Error("尚待選擇是否還原既有雲端備份，暫停備份")
                 return@launch
             }
 
@@ -483,6 +534,11 @@ class MainViewModel @JvmOverloads constructor(
                 val restoreResult = backupRepo.restoreFromCloudBackup(fileId, password)
                 if (restoreResult.isSuccess) {
                     val summary = restoreResult.getOrThrow()
+                    if (!email.isNullOrBlank()) {
+                        backupRepo.setRestorePending(email, false)
+                        _isRestorePending.value = false
+                        BackupWorker.schedulePeriodicBackup(getApplication())
+                    }
                     loadSettings()
                     _restoreUiState.value = RestoreUiState.Success(summary)
                     _uiMessage.value = "資料還原成功！"

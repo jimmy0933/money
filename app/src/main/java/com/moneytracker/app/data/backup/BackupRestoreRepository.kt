@@ -12,7 +12,9 @@ data class CloudBackupInfo(
     val fileId: String,
     val fileName: String,
     val createdTimeMillis: Long,
-    val sizeBytes: Long
+    val sizeBytes: Long,
+    val isDefaultOnly: Boolean = false,
+    val summaryText: String = ""
 )
 
 data class BackupSuccessDetails(
@@ -41,6 +43,20 @@ class BackupRestoreRepository(
     private val db: AppDatabase,
     private val driveManager: DriveManager? = null
 ) {
+
+    suspend fun isRestorePending(accountEmail: String?): Boolean {
+        if (accountEmail.isNullOrBlank()) return false
+        val key = "restore_pending_${accountEmail.trim().lowercase()}"
+        return db.settingsAndBackupDao().getSettingValue(key) == "true"
+    }
+
+    suspend fun setRestorePending(accountEmail: String, isPending: Boolean) {
+        if (accountEmail.isBlank()) return
+        val key = "restore_pending_${accountEmail.trim().lowercase()}"
+        db.settingsAndBackupDao().setSettingValue(
+            AppSettingsEntity(key, if (isPending) "true" else "false")
+        )
+    }
 
     private suspend fun createLocalBackupBytesInternal(password: String?): Pair<BackupPayload, ByteArray> {
         val payload = BackupCryptoManager.createBackupPayload(db)
@@ -92,8 +108,13 @@ class BackupRestoreRepository(
                     )
 
                     if (!currentGoogleEmail.isNullOrBlank()) {
+                        val cleanEmail = currentGoogleEmail.trim()
                         db.settingsAndBackupDao().setSettingValue(
-                            AppSettingsEntity("google_account_email", currentGoogleEmail)
+                            AppSettingsEntity("google_account_email", cleanEmail)
+                        )
+                        // 還原成功後，清除該帳號的 restore_pending 狀態
+                        db.settingsAndBackupDao().setSettingValue(
+                            AppSettingsEntity("restore_pending_${cleanEmail.lowercase()}", "false")
                         )
                     }
 
@@ -303,8 +324,24 @@ class BackupRestoreRepository(
     suspend fun listCloudBackups(): Result<List<CloudBackupInfo>> {
         val drive = driveManager ?: return Result.failure(IllegalStateException("Google Drive 服務未初始化或未登入"))
         return try {
-            val list = drive.listBackupFiles()
-            Result.success(list)
+            val rawList = drive.listBackupFiles()
+            val enrichedList = rawList.map { info ->
+                try {
+                    val downloadedBytes = drive.downloadBackupFile(info.fileId)
+                    val payload = BackupCryptoManager.decryptAndDeserializePayload(downloadedBytes, null)
+                    val isDefault = payload.transactions.isEmpty() &&
+                            payload.loans.isEmpty() &&
+                            payload.loanRepayments.isEmpty() &&
+                            payload.accounts.all { it.initialBalance == 0L }
+
+                    val summary = "交易 ${payload.transactions.size} 筆 | 帳戶 ${payload.accounts.size} 筆 | 借貸 ${payload.loans.size} 筆"
+                    info.copy(isDefaultOnly = isDefault, summaryText = summary)
+                } catch (e: Exception) {
+                    // 若加密需要密碼或無法直接讀取內容，則保留基本資訊
+                    info.copy(isDefaultOnly = false, summaryText = "加密備份檔或格式未知")
+                }
+            }
+            Result.success(enrichedList)
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -313,11 +350,15 @@ class BackupRestoreRepository(
     suspend fun inspectCloudBackup(fileId: String, password: String?): Result<BackupPayload> {
         val drive = driveManager ?: return Result.failure(IllegalStateException("Google Drive 服務未初始化或未登入"))
         return try {
+            android.util.Log.d("BackupRestoreRepo", "[Diagnosis] Starting backup inspection for fileId=$fileId")
             DatabaseInitializer.ensureInitialized(db)
             val downloadedBytes = drive.downloadBackupFile(fileId)
+            android.util.Log.d("BackupRestoreRepo", "[Diagnosis] Downloaded backup file byte count=${downloadedBytes.size}")
             val payload = BackupCryptoManager.decryptAndDeserializePayload(downloadedBytes, password)
+            android.util.Log.d("BackupRestoreRepo", "[Diagnosis] Decrypted payload: accounts=${payload.accounts.size}, transactions=${payload.transactions.size}, loans=${payload.loans.size}")
             Result.success(payload)
         } catch (e: Exception) {
+            android.util.Log.e("BackupRestoreRepo", "[Diagnosis] Inspection failed for fileId=$fileId: ${e.message}")
             Result.failure(e)
         }
     }
@@ -325,11 +366,22 @@ class BackupRestoreRepository(
     suspend fun restoreFromCloudBackup(fileId: String, password: String?): Result<VerifiedRestoreSummary> {
         val drive = driveManager ?: return Result.failure(IllegalStateException("Google Drive 服務未初始化或未登入"))
         return try {
+            android.util.Log.d("BackupRestoreRepo", "[Diagnosis] Starting cloud restore for fileId=$fileId")
             DatabaseInitializer.ensureInitialized(db)
             val downloadedBytes = drive.downloadBackupFile(fileId)
+            android.util.Log.d("BackupRestoreRepo", "[Diagnosis] Downloaded bytes successfully for restore, size=${downloadedBytes.size}")
             val payload = BackupCryptoManager.decryptAndDeserializePayload(downloadedBytes, password)
-            restoreFromPayload(payload)
+            android.util.Log.d("BackupRestoreRepo", "[Diagnosis] Decrypted payload successfully, executing restoreToDb transaction...")
+            val restoreResult = restoreFromPayload(payload)
+            if (restoreResult.isSuccess) {
+                val summary = restoreResult.getOrThrow()
+                android.util.Log.d("BackupRestoreRepo", "[Diagnosis] Transaction committed & verified from DB: $summary")
+            } else {
+                android.util.Log.e("BackupRestoreRepo", "[Diagnosis] Restore transaction failed: ${restoreResult.exceptionOrNull()?.message}")
+            }
+            restoreResult
         } catch (e: Exception) {
+            android.util.Log.e("BackupRestoreRepo", "[Diagnosis] Cloud restore exception for fileId=$fileId: ${e.message}")
             Result.failure(e)
         }
     }

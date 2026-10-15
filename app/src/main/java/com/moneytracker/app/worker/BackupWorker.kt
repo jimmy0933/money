@@ -29,6 +29,11 @@ class BackupWorker(
         val driveManager = GoogleDriveManager(applicationContext, googleAccount)
         val backupRepo = BackupRestoreRepository(db, driveManager)
 
+        if (backupRepo.isRestorePending(googleAccount)) {
+            // 尚待使用者選擇「還原既有資料」或「以目前資料開始」，不得自動上傳備份
+            return Result.success()
+        }
+
         val password = db.settingsAndBackupDao().getSettingValue("backup_password")
 
         val result = backupRepo.backupToGoogleDrive(password)

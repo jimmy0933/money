@@ -1,6 +1,7 @@
 package com.moneytracker.app
 
 import android.content.Context
+import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.moneytracker.app.data.db.AppDatabase
 import com.moneytracker.app.data.db.DatabaseInitializer
@@ -31,20 +32,25 @@ class MainViewModelTest {
     private val testDispatcher = UnconfinedTestDispatcher()
     private lateinit var viewModel: MainViewModel
 
+    private lateinit var db: AppDatabase
+
     @Before
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
         val context = ApplicationProvider.getApplicationContext<Context>() as android.app.Application
-        kotlinx.coroutines.runBlocking {
+        db = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        runBlocking {
             DatabaseInitializer.resetInitializationStateForTest()
-            val db = AppDatabase.getDatabase(context)
             DatabaseInitializer.ensureInitialized(db)
         }
-        viewModel = MainViewModel(context)
+        viewModel = MainViewModel(context, db)
     }
 
     @After
     fun tearDown() {
+        db.close()
         Dispatchers.resetMain()
     }
 
