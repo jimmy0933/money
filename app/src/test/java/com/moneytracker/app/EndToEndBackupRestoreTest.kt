@@ -347,4 +347,76 @@ class EndToEndBackupRestoreTest {
         assertTrue(accounts.any { it.name == "本機原有帳戶" })
         assertTrue(accounts.none { it.name == "雲端備份帳戶" })
     }
+
+    /**
+     * 測試：登入後 pendingRestore 時 BackupWorker 執行不會上傳預設資料，且還原既有備份 A 能排除預設備份 B
+     */
+    @Test
+    fun testPendingRestorePreventsAutoBackupAndAllowsRestoringOriginalBackup() = runBlocking {
+        val email = "testrestore@gmail.com"
+
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val application = context as android.app.Application
+        backupRepo.setRestorePending(email, true)
+        db.settingsAndBackupDao().setSettingValue(
+            com.moneytracker.app.data.entity.AppSettingsEntity("google_account_email", email)
+        )
+
+        val viewModel = MainViewModel(application, db)
+
+        ShadowLooper.idleMainLooper()
+        for (i in 1..50) {
+            ShadowLooper.idleMainLooper()
+            if (viewModel.isRestorePending.value) break
+            kotlinx.coroutines.delay(20)
+        }
+
+        assertTrue("設定 restorePending = true 後，isRestorePending 應為 true", viewModel.isRestorePending.value)
+
+        // 嘗試 performBackup，應回傳錯誤訊息，阻止上傳
+        viewModel.performBackup(null, fakeDriveManager)
+        ShadowLooper.idleMainLooper()
+        for (i in 1..20) {
+            ShadowLooper.idleMainLooper()
+            if (viewModel.backupUiState.value is MainViewModel.BackupUiState.Error) break
+            kotlinx.coroutines.delay(20)
+        }
+        val backupState = viewModel.backupUiState.value
+        assertTrue(backupState is MainViewModel.BackupUiState.Error)
+        assertEquals("尚待選擇是否還原既有雲端備份，暫停備份", (backupState as MainViewModel.BackupUiState.Error).message)
+
+        // 建立既有有效備份 A (含 1000 元帳戶與 100 元交易)
+        appRepo.insertAccount(AccountEntity(name = "備份A帳戶", type = AccountType.CASH, initialBalance = 1000))
+        val backupAFileId = backupRepo.backupToGoogleDrive(password = null).getOrThrow().driveFileId
+
+        // 清空資料庫模擬新裝置/重裝，並產生重裝後的預設資料備份 B
+        db.clearAllTables()
+        DatabaseInitializer.ensureInitialized(db)
+        val backupBFileId = backupRepo.backupToGoogleDrive(password = null).getOrThrow().driveFileId
+
+        // 列出雲端備份，驗證能識別 B 為【預設初始資料】
+        val cloudBackupsResult = backupRepo.listCloudBackups()
+        assertTrue(cloudBackupsResult.isSuccess)
+        val backups = cloudBackupsResult.getOrThrow()
+
+        val backupBInfo = backups.find { it.fileId == backupBFileId }
+        val backupAInfo = backups.find { it.fileId == backupAFileId }
+
+        assertNotNull(backupBInfo)
+        assertNotNull(backupAInfo)
+        assertTrue("備份 B 應標示為預設初始資料", backupBInfo!!.isDefaultOnly)
+        assertTrue("備份 A 不應標示為預設初始資料", !backupAInfo!!.isDefaultOnly)
+
+        // 選擇還原既有備份 A
+        val restoreResult = backupRepo.restoreFromCloudBackup(backupAFileId, password = null)
+        assertTrue("還原 A 必須成功", restoreResult.isSuccess)
+
+        // 驗證 restore_pending 已被清除為 false
+        val isPendingAfterRestore = backupRepo.isRestorePending(email)
+        assertTrue("還原成功後 restore_pending 應為 false", !isPendingAfterRestore)
+
+        // 驗證 DB 恢復 A 的資料
+        val accounts = db.accountDao().getAllAccounts()
+        assertTrue(accounts.any { it.name == "備份A帳戶" })
+    }
 }

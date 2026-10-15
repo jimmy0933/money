@@ -47,20 +47,33 @@ class GoogleDriveManager(
     }
 
     override suspend fun listBackupFiles(): List<CloudBackupInfo> = withContext(Dispatchers.IO) {
-        val result = driveService.files().list()
-            .setSpaces("appDataFolder")
-            .setFields("nextPageToken, files(id, name, createdTime, size)")
-            .setOrderBy("createdTime desc")
-            .execute()
+        val allFiles = mutableListOf<File>()
+        var pageToken: String? = null
 
-        result.files?.map { file ->
+        do {
+            val request = driveService.files().list()
+                .setSpaces("appDataFolder")
+                .setFields("nextPageToken, files(id, name, createdTime, size)")
+                .setOrderBy("createdTime desc")
+                .setPageSize(100)
+
+            if (pageToken != null) {
+                request.pageToken = pageToken
+            }
+
+            val result = request.execute()
+            result.files?.let { allFiles.addAll(it) }
+            pageToken = result.nextPageToken
+        } while (pageToken != null)
+
+        allFiles.map { file ->
             CloudBackupInfo(
                 fileId = file.id,
                 fileName = file.name ?: "backup.json",
                 createdTimeMillis = file.createdTime?.value ?: System.currentTimeMillis(),
                 sizeBytes = file.getSize() ?: 0L
             )
-        } ?: emptyList()
+        }
     }
 
     override suspend fun downloadBackupFile(fileId: String): ByteArray = withContext(Dispatchers.IO) {
