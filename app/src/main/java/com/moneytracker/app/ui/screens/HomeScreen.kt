@@ -22,7 +22,7 @@ import androidx.compose.material.icons.filled.Handshake
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -31,6 +31,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -68,10 +69,21 @@ fun HomeScreen(viewModel: MainViewModel) {
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-                shape = RoundedCornerShape(16.dp)
+                colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+                shape = RoundedCornerShape(24.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
             ) {
-                Column(modifier = Modifier.padding(20.dp)) {
+                val gradientBrush = Brush.linearGradient(
+                    colors = listOf(
+                        MaterialTheme.colorScheme.primaryContainer,
+                        MaterialTheme.colorScheme.secondaryContainer
+                    )
+                )
+                Column(modifier = Modifier
+                    .background(gradientBrush)
+                    .padding(20.dp)
+                    .fillMaxWidth()
+                ) {
                     Text(text = "本月收支總覽", style = MaterialTheme.typography.titleMedium)
                     Spacer(modifier = Modifier.height(12.dp))
                     Row(
@@ -126,7 +138,8 @@ fun HomeScreen(viewModel: MainViewModel) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                shape = RoundedCornerShape(16.dp)
+                shape = RoundedCornerShape(24.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -141,9 +154,7 @@ fun HomeScreen(viewModel: MainViewModel) {
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Divider()
-                    Spacer(modifier = Modifier.height(12.dp))
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -168,7 +179,8 @@ fun HomeScreen(viewModel: MainViewModel) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = Color(0xFFFFEBEE)),
-                    shape = RoundedCornerShape(12.dp)
+                    shape = RoundedCornerShape(24.dp),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                 ) {
                     Row(
                         modifier = Modifier.padding(16.dp),
@@ -198,7 +210,9 @@ fun HomeScreen(viewModel: MainViewModel) {
             items(transactions.take(10)) { tx ->
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    shape = RoundedCornerShape(24.dp),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                 ) {
                     Row(
                         modifier = Modifier

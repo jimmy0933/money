@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -93,7 +94,9 @@ fun StatisticsScreen(viewModel: MainViewModel) {
                         item {
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                                shape = RoundedCornerShape(16.dp),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                             ) {
                                 Column(
                                     modifier = Modifier.padding(16.dp),
@@ -126,11 +129,16 @@ fun StatisticsScreen(viewModel: MainViewModel) {
                             Text("分類排行", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         }
 
-                        items(categoryExpenseMap) { (catName, sum) ->
+                        items(categoryExpenseMap.toList().mapIndexed { index, pair -> index to pair }) { (index, pair) ->
+                            val catName = pair.first
+                            val sum = pair.second
+                            val color = pieColors[index % pieColors.size]
                             val percent = if (totalExpense > 0) (sum.toDouble() / totalExpense.toDouble() * 100).toInt() else 0
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                                shape = RoundedCornerShape(16.dp),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                             ) {
                                 Row(
                                     modifier = Modifier
@@ -139,7 +147,15 @@ fun StatisticsScreen(viewModel: MainViewModel) {
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(catName, fontWeight = FontWeight.Medium)
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(16.dp)
+                                                .background(color, RoundedCornerShape(4.dp))
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(catName, fontWeight = FontWeight.Medium)
+                                    }
                                     Text("NT$ $sum ($percent%)", fontWeight = FontWeight.Bold)
                                 }
                             }
@@ -150,7 +166,9 @@ fun StatisticsScreen(viewModel: MainViewModel) {
             1 -> {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                    shape = RoundedCornerShape(16.dp),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text("總收入 vs 總支出長條圖", fontWeight = FontWeight.Bold)

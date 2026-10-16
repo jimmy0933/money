@@ -1,3 +1,4 @@
+@file:Suppress("DEPRECATION")
 package com.moneytracker.app.ui.screens
 
 import android.app.Activity
@@ -153,7 +154,8 @@ fun SettingsScreen(viewModel: MainViewModel) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
-                    shape = RoundedCornerShape(16.dp)
+                    shape = RoundedCornerShape(16.dp),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text("尚未完成雲端資料還原選擇", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
@@ -198,7 +200,8 @@ fun SettingsScreen(viewModel: MainViewModel) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
-                shape = RoundedCornerShape(16.dp)
+                shape = RoundedCornerShape(16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(
@@ -267,7 +270,9 @@ fun SettingsScreen(viewModel: MainViewModel) {
                             Spacer(modifier = Modifier.height(8.dp))
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
-                                colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F5E9))
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F5E9)),
+                                shape = RoundedCornerShape(8.dp),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                             ) {
                                 Column(modifier = Modifier.padding(8.dp)) {
                                     Text("最近一次備份成功！", color = Color(0xFF2E7D32), fontWeight = FontWeight.Bold, fontSize = 12.sp)
@@ -351,7 +356,9 @@ fun SettingsScreen(viewModel: MainViewModel) {
         items(accounts) { account ->
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                shape = RoundedCornerShape(12.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
             ) {
                 Row(
                     modifier = Modifier
@@ -387,7 +394,9 @@ fun SettingsScreen(viewModel: MainViewModel) {
         items(categories) { category ->
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                shape = RoundedCornerShape(12.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
             ) {
                 Row(
                     modifier = Modifier
