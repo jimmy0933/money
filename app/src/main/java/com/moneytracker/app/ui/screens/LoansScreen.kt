@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.HourglassTop
@@ -36,6 +37,17 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.SelectableDates
+import androidx.compose.material3.HorizontalDivider
+import java.util.Calendar
+import com.moneytracker.app.data.entity.ContactEntity
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -69,6 +81,8 @@ fun LoansScreen(viewModel: MainViewModel) {
     var selectedLoanDetail by remember { mutableStateOf<LoanWithDetails?>(null) }
     var selectedContactSummary by remember { mutableStateOf<ContactSummary?>(null) }
     var showAddLoanDialog by remember { mutableStateOf(false) }
+    var showContactManagementDialog by remember { mutableStateOf<ContactEntity?>(null) }
+    var showAddContactDialog by remember { mutableStateOf(false) }
 
     val dateFormat = SimpleDateFormat("yyyy/MM/dd", Locale.TAIWAN)
 
@@ -93,11 +107,20 @@ fun LoansScreen(viewModel: MainViewModel) {
 
     Scaffold(
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = { showAddLoanDialog = true },
-                containerColor = MaterialTheme.colorScheme.primary
-            ) {
-                Icon(Icons.Default.Add, contentDescription = "新增借貸")
+            if (selectedTab == 2) {
+                FloatingActionButton(
+                    onClick = { showAddContactDialog = true },
+                    containerColor = MaterialTheme.colorScheme.primary
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "新增對象")
+                }
+            } else {
+                FloatingActionButton(
+                    onClick = { showAddLoanDialog = true },
+                    containerColor = MaterialTheme.colorScheme.primary
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "新增借貸")
+                }
             }
         }
     ) { paddingValues ->
@@ -124,6 +147,32 @@ fun LoansScreen(viewModel: MainViewModel) {
                 0, 1 -> {
                     val targetType = if (selectedTab == 0) LoanType.LEND else LoanType.BORROW
                     val filteredLoans = loansWithDetails.filter { it.loan.type == targetType }
+
+                    val totalLendOutstanding = contactSummaries.sumOf { it.outstandingLend }
+                    val totalBorrowOutstanding = contactSummaries.sumOf { it.outstandingBorrow }
+
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            horizontalArrangement = Arrangement.SpaceEvenly
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("總待收回", fontSize = 14.sp, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                                Text("NT$ $totalLendOutstanding", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
+                            }
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("總待償還", fontSize = 14.sp, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                                Text("NT$ $totalBorrowOutstanding", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFFC62828))
+                            }
+                        }
+                    }
 
                     if (filteredLoans.isEmpty()) {
                         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -172,6 +221,22 @@ fun LoansScreen(viewModel: MainViewModel) {
         AddLoanDialog(
             viewModel = viewModel,
             onDismiss = { showAddLoanDialog = false }
+        )
+    }
+
+    if (showAddContactDialog) {
+        ContactManagementDialog(
+            contact = null,
+            viewModel = viewModel,
+            onDismiss = { showAddContactDialog = false }
+        )
+    }
+
+    if (showContactManagementDialog != null) {
+        ContactManagementDialog(
+            contact = showContactManagementDialog,
+            viewModel = viewModel,
+            onDismiss = { showContactManagementDialog = null }
         )
     }
 }
@@ -277,17 +342,30 @@ fun ContactSummaryCard(summary: ContactSummary, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onClick() },
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(16.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        shape = RoundedCornerShape(12.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Person, contentDescription = null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(summary.contact.name, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Person, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(summary.contact.name, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                }
+                if (summary.contact.phone.isNotBlank()) {
+                    Text(summary.contact.phone, fontSize = 12.sp, color = Color.Gray)
+                }
+            }
+            if (summary.contact.note.isNotBlank()) {
+                Text(summary.contact.note, fontSize = 12.sp, color = Color.Gray, modifier = Modifier.padding(top = 4.dp))
             }
 
+            Spacer(modifier = Modifier.height(12.dp))
+            HorizontalDivider()
             Spacer(modifier = Modifier.height(12.dp))
 
             Row(
@@ -295,15 +373,13 @@ fun ContactSummaryCard(summary: ContactSummary, onClick: () -> Unit) {
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Column {
-                    Text("我借給對方", fontSize = 12.sp, color = Color.Gray)
-                    Text("總借出: NT$ ${summary.totalLendAmount}", fontSize = 13.sp)
-                    Text("尚欠未收: NT$ ${summary.outstandingLend}", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
+                    Text("借出 (待收回)", fontSize = 12.sp, color = Color.Gray)
+                    Text("NT$ ${summary.outstandingLend}", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
                 }
 
                 Column(horizontalAlignment = Alignment.End) {
-                    Text("我向對方借", fontSize = 12.sp, color = Color.Gray)
-                    Text("總借入: NT$ ${summary.totalBorrowAmount}", fontSize = 13.sp)
-                    Text("尚欠未還: NT$ ${summary.outstandingBorrow}", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFFC62828))
+                    Text("借入 (待償還)", fontSize = 12.sp, color = Color.Gray)
+                    Text("NT$ ${summary.outstandingBorrow}", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFFC62828))
                 }
             }
         }
@@ -339,12 +415,24 @@ fun LoanDetailView(
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text("對象: ${loanWithDetails.contact?.name ?: "未知"}", style = MaterialTheme.typography.titleMedium)
-                Text("借貸類型: ${loanWithDetails.loan.type.label}", fontSize = 14.sp)
+                Text(
+                    "借貸類型: ${loanWithDetails.loan.type.label}",
+                    fontSize = 14.sp,
+                    color = if (loanWithDetails.loan.type == LoanType.LEND) Color(0xFF2E7D32) else Color(0xFFC62828),
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                val dateFormatUtc = SimpleDateFormat("yyyy/MM/dd", java.util.Locale.TAIWAN).apply {
+                    timeZone = java.util.TimeZone.getTimeZone("UTC")
+                }
+                Text("借貸發生日期: ${dateFormatUtc.format(Date(loanWithDetails.loan.dateMillis))}", fontSize = 14.sp)
+                Text("預計還款日: ${loanWithDetails.loan.dueDateMillis?.let { dateFormatUtc.format(Date(it)) } ?: "未設定"}", fontSize = 14.sp)
                 Spacer(modifier = Modifier.height(8.dp))
                 Text("原始本金: NT$ ${loanWithDetails.loan.amount}", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 Text("累計已還: NT$ ${loanWithDetails.repaidAmount}", fontSize = 16.sp)
-                Text("剩餘金額: NT$ ${loanWithDetails.remainingAmount}", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFFC62828))
+                Text("剩餘金額: NT$ ${loanWithDetails.remainingAmount}", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = if (loanWithDetails.remainingAmount == 0L) Color(0xFF2E7D32) else Color(0xFFC62828))
                 if (loanWithDetails.loan.note.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(8.dp))
                     Text("備註: ${loanWithDetails.loan.note}", fontSize = 13.sp, color = Color.Gray)
                 }
             }
@@ -373,7 +461,7 @@ fun LoanDetailView(
             }
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(loanWithDetails.repayments) { repayment ->
+                items(loanWithDetails.repayments.sortedByDescending { it.dateMillis }) { repayment ->
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
@@ -426,11 +514,60 @@ fun ContactDetailView(
             .fillMaxSize()
             .padding(16.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+        var showEditContactDialog by remember { mutableStateOf(false) }
+        var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                }
+                Text("${contactSummary.contact.name} - 借貸歷史", style = MaterialTheme.typography.titleLarge)
             }
-            Text("${contactSummary.contact.name} - 借貸歷史", style = MaterialTheme.typography.titleLarge)
+            Row {
+                Button(onClick = { showEditContactDialog = true }) {
+                    Text("編輯")
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Button(
+                    onClick = { showDeleteConfirmDialog = true },
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Color(0xFFC62828))
+                ) {
+                    Text("停用")
+                }
+            }
+        }
+
+        if (showEditContactDialog) {
+            ContactManagementDialog(
+                contact = contactSummary.contact,
+                viewModel = viewModel,
+                onDismiss = { showEditContactDialog = false }
+            )
+        }
+
+        if (showDeleteConfirmDialog) {
+            AlertDialog(
+                onDismissRequest = { showDeleteConfirmDialog = false },
+                title = { Text("停用借貸對象") },
+                text = { Text("確定要停用此對象嗎？停用後歷史紀錄仍會保留，但無法再新增此對象的借貸。") },
+                confirmButton = {
+                    Button(onClick = {
+                        viewModel.deleteContact(contactSummary.contact.id)
+                        showDeleteConfirmDialog = false
+                        onBack()
+                    }) {
+                        Text("確定")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDeleteConfirmDialog = false }) { Text("取消") }
+                }
+            )
         }
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -448,6 +585,7 @@ fun ContactDetailView(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddLoanDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
     var contactName by remember { mutableStateOf("") }
@@ -458,11 +596,38 @@ fun AddLoanDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
     val accounts by viewModel.accounts.collectAsState()
     var selectedAccount by remember { mutableStateOf(accounts.firstOrNull()) }
 
+    val contactSummaries by viewModel.contactSummaries.collectAsState()
+    val existingContacts = contactSummaries.map { it.contact }
+
+    var expanded by remember { mutableStateOf(false) }
+    var selectedContactId by remember { mutableStateOf<Long?>(null) }
+
+    val localCalendar = Calendar.getInstance()
+    val calendar = Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC")).apply {
+        set(Calendar.YEAR, localCalendar.get(Calendar.YEAR))
+        set(Calendar.MONTH, localCalendar.get(Calendar.MONTH))
+        set(Calendar.DAY_OF_MONTH, localCalendar.get(Calendar.DAY_OF_MONTH))
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
+    var dateMillis by remember { mutableStateOf(calendar.timeInMillis) }
+    var dueDateMillis by remember { mutableStateOf<Long?>(null) }
+    var showDatePicker by remember { mutableStateOf(false) }
+    var showDueDatePicker by remember { mutableStateOf(false) }
+    val dateFormat = SimpleDateFormat("yyyy/MM/dd", Locale.TAIWAN).apply {
+        timeZone = java.util.TimeZone.getTimeZone("UTC")
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("新增借貸紀錄") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())
+            ) {
                 TabRow(selectedTabIndex = selectedTypeIndex) {
                     Tab(selected = selectedTypeIndex == 0, onClick = { selectedTypeIndex = 0 }) {
                         Text("借出 (我借別人)", modifier = Modifier.padding(8.dp))
@@ -472,13 +637,69 @@ fun AddLoanDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
                     }
                 }
 
-                OutlinedTextField(
-                    value = contactName,
-                    onValueChange = { contactName = it },
-                    label = { Text("對象姓名") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true
-                )
+                ExposedDropdownMenuBox(
+                    expanded = expanded,
+                    onExpandedChange = { expanded = !expanded }
+                ) {
+                    OutlinedTextField(
+                        value = contactName,
+                        onValueChange = {
+                            contactName = it
+                            selectedContactId = existingContacts.find { c -> c.name == it.trim() }?.id
+                            expanded = true
+                        },
+                        label = { Text("對象姓名") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .menuAnchor(),
+                        singleLine = true,
+                        colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors()
+                    )
+
+                    val filteredContacts = existingContacts.filter { !it.isDeleted && it.name.contains(contactName, ignoreCase = true) }
+                    var showQuickAddContactDialog by remember { mutableStateOf(false) }
+
+                    if (expanded) {
+                        ExposedDropdownMenu(
+                            expanded = expanded,
+                            onDismissRequest = { expanded = false }
+                        ) {
+                            filteredContacts.forEach { contact ->
+                                DropdownMenuItem(
+                                    text = { Text(contact.name) },
+                                    onClick = {
+                                        contactName = contact.name
+                                        selectedContactId = contact.id
+                                        expanded = false
+                                    }
+                                )
+                            }
+                            if (filteredContacts.none { it.name == contactName.trim() } && contactName.isNotBlank()) {
+                                DropdownMenuItem(
+                                    text = { Text("新增對象: $contactName", color = MaterialTheme.colorScheme.primary) },
+                                    onClick = {
+                                        showQuickAddContactDialog = true
+                                        expanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    if (showQuickAddContactDialog) {
+                        ContactManagementDialog(
+                            contact = ContactEntity(name = contactName),
+                            viewModel = viewModel,
+                            onDismiss = {
+                                showQuickAddContactDialog = false
+                            },
+                            onSaveSuccess = { newContactId ->
+                                selectedContactId = newContactId
+                                showQuickAddContactDialog = false
+                            }
+                        )
+                    }
+                }
 
                 OutlinedTextField(
                     value = amountText,
@@ -491,6 +712,32 @@ fun AddLoanDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
                 Text("帳戶: ${selectedAccount?.name ?: "選擇帳戶"}", fontWeight = FontWeight.Bold)
 
                 OutlinedTextField(
+                    value = dateFormat.format(Date(dateMillis)),
+                    onValueChange = { },
+                    label = { Text("借貸發生日期") },
+                    modifier = Modifier.fillMaxWidth(),
+                    readOnly = true,
+                    trailingIcon = {
+                        IconButton(onClick = { showDatePicker = true }) {
+                            Icon(Icons.Default.Add, contentDescription = "選擇日期")
+                        }
+                    }
+                )
+
+                OutlinedTextField(
+                    value = dueDateMillis?.let { dateFormat.format(Date(it)) } ?: "未設定",
+                    onValueChange = { },
+                    label = { Text("預計還款日 (選填)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    readOnly = true,
+                    trailingIcon = {
+                        IconButton(onClick = { showDueDatePicker = true }) {
+                            Icon(Icons.Default.Add, contentDescription = "選擇日期")
+                        }
+                    }
+                )
+
+                OutlinedTextField(
                     value = note,
                     onValueChange = { note = it },
                     label = { Text("備註") },
@@ -499,33 +746,86 @@ fun AddLoanDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
             }
         },
         confirmButton = {
+            var isSaving by remember { mutableStateOf(false) }
             Button(
+                enabled = !isSaving,
                 onClick = {
                     val amount = amountText.toLongOrNull() ?: 0L
                     val acc = selectedAccount
+                    val existingMatch = existingContacts.find { c -> c.name == contactName.trim() }
+                    if (existingMatch != null && selectedContactId == null) {
+                        selectedContactId = existingMatch.id
+                    }
+
                     if (contactName.isNotBlank() && amount > 0 && acc != null) {
+                        isSaving = true
                         viewModel.addLoan(
                             contactName = contactName.trim(),
                             type = if (selectedTypeIndex == 0) LoanType.LEND else LoanType.BORROW,
                             amount = amount,
-                            dateMillis = System.currentTimeMillis(),
-                            dueDateMillis = null,
+                            dateMillis = dateMillis,
+                            dueDateMillis = dueDateMillis,
                             accountId = acc.id,
-                            note = note
+                            note = note,
+                            contactId = selectedContactId
                         )
                         onDismiss()
                     }
                 }
             ) {
-                Text("儲存")
+                Text(if (isSaving) "儲存中..." else "儲存")
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("取消") }
         }
     )
+
+    if (showDatePicker) {
+        val datePickerState = rememberDatePickerState(initialSelectedDateMillis = dateMillis)
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    datePickerState.selectedDateMillis?.let { dateMillis = it }
+                    showDatePicker = false
+                }) {
+                    Text("確定")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) { Text("取消") }
+            }
+        ) {
+            DatePicker(state = datePickerState)
+        }
+    }
+
+    if (showDueDatePicker) {
+        val datePickerState = rememberDatePickerState(initialSelectedDateMillis = dueDateMillis ?: dateMillis)
+        DatePickerDialog(
+            onDismissRequest = { showDueDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    dueDateMillis = datePickerState.selectedDateMillis
+                    showDueDatePicker = false
+                }) {
+                    Text("確定")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    dueDateMillis = null
+                    showDueDatePicker = false
+                }) { Text("清除") }
+            }
+        ) {
+            DatePicker(state = datePickerState)
+        }
+    }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddRepaymentDialog(
     loanWithDetails: LoanWithDetails,
@@ -538,12 +838,30 @@ fun AddRepaymentDialog(
     var selectedAccount by remember { mutableStateOf(accounts.firstOrNull()) }
 
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    val localCalendar = Calendar.getInstance()
+    val calendar = Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC")).apply {
+        set(Calendar.YEAR, localCalendar.get(Calendar.YEAR))
+        set(Calendar.MONTH, localCalendar.get(Calendar.MONTH))
+        set(Calendar.DAY_OF_MONTH, localCalendar.get(Calendar.DAY_OF_MONTH))
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
+    var dateMillis by remember { mutableStateOf(calendar.timeInMillis) }
+    var showDatePicker by remember { mutableStateOf(false) }
+    val dateFormat = SimpleDateFormat("yyyy/MM/dd", Locale.TAIWAN).apply {
+        timeZone = java.util.TimeZone.getTimeZone("UTC")
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("新增還款紀錄") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())
+            ) {
                 Text("剩餘尚未歸還: NT$ ${loanWithDetails.remainingAmount}", fontWeight = FontWeight.Bold, color = Color(0xFFC62828))
 
                 OutlinedTextField(
@@ -564,6 +882,19 @@ fun AddRepaymentDialog(
                     Text(errorMessage!!, color = Color.Red, fontSize = 12.sp)
                 }
 
+                OutlinedTextField(
+                    value = dateFormat.format(Date(dateMillis)),
+                    onValueChange = { },
+                    label = { Text("還款日期") },
+                    modifier = Modifier.fillMaxWidth(),
+                    readOnly = true,
+                    trailingIcon = {
+                        IconButton(onClick = { showDatePicker = true }) {
+                            Icon(Icons.Default.Add, contentDescription = "選擇日期")
+                        }
+                    }
+                )
+
                 Text("資金流向帳戶: ${selectedAccount?.name ?: "選擇帳戶"}", fontWeight = FontWeight.Bold)
 
                 OutlinedTextField(
@@ -575,17 +906,20 @@ fun AddRepaymentDialog(
             }
         },
         confirmButton = {
+            var isSaving by remember { mutableStateOf(false) }
             Button(
+                enabled = !isSaving,
                 onClick = {
                     val amount = amountText.toLongOrNull() ?: 0L
                     val acc = selectedAccount
                     if (amount > loanWithDetails.remainingAmount) {
                         errorMessage = "還款金額不能超過剩餘欠款 (NT$ ${loanWithDetails.remainingAmount})"
                     } else if (amount > 0 && acc != null) {
+                        isSaving = true
                         viewModel.addLoanRepayment(
                             loanId = loanWithDetails.loan.id,
                             amount = amount,
-                            dateMillis = System.currentTimeMillis(),
+                            dateMillis = dateMillis,
                             accountId = acc.id,
                             note = note
                         )
@@ -593,7 +927,104 @@ fun AddRepaymentDialog(
                     }
                 }
             ) {
-                Text("確認還款")
+                Text(if (isSaving) "儲存中..." else "確認還款")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("取消") }
+        }
+    )
+
+    if (showDatePicker) {
+        val datePickerState = rememberDatePickerState(initialSelectedDateMillis = dateMillis)
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    datePickerState.selectedDateMillis?.let { dateMillis = it }
+                    showDatePicker = false
+                }) {
+                    Text("確定")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) { Text("取消") }
+            }
+        ) {
+            DatePicker(state = datePickerState)
+        }
+    }
+}
+
+@Composable
+fun ContactManagementDialog(
+    contact: ContactEntity?,
+    viewModel: MainViewModel,
+    onDismiss: () -> Unit,
+    onSaveSuccess: ((Long) -> Unit)? = null
+) {
+    var name by remember { mutableStateOf(contact?.name ?: "") }
+    var phone by remember { mutableStateOf(contact?.phone ?: "") }
+    var note by remember { mutableStateOf(contact?.note ?: "") }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (contact == null || contact.id == 0L) "新增借貸對象" else "編輯借貸對象") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it; errorMessage = null },
+                    label = { Text("姓名 (必填)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    isError = errorMessage != null
+                )
+                if (errorMessage != null) {
+                    Text(errorMessage!!, color = Color.Red, fontSize = 12.sp)
+                }
+
+                OutlinedTextField(
+                    value = phone,
+                    onValueChange = { phone = it },
+                    label = { Text("電話 (選填)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true
+                )
+
+                OutlinedTextField(
+                    value = note,
+                    onValueChange = { note = it },
+                    label = { Text("備註 (選填)") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            var isSaving by remember { mutableStateOf(false) }
+            Button(
+                enabled = !isSaving,
+                onClick = {
+                    if (name.trim().isBlank()) {
+                        errorMessage = "姓名不能為空"
+                    } else {
+                        isSaving = true
+                        if (contact == null || contact.id == 0L) {
+                            viewModel.addContact(name.trim(), phone.trim(), note.trim()) { id ->
+                                onSaveSuccess?.invoke(id)
+                                onDismiss()
+                            }
+                        } else {
+                            viewModel.updateContact(contact.copy(name = name.trim(), phone = phone.trim(), note = note.trim())) {
+                                onSaveSuccess?.invoke(contact.id)
+                                onDismiss()
+                            }
+                        }
+                    }
+                }
+            ) {
+                Text(if (isSaving) "儲存中..." else "儲存")
             }
         },
         dismissButton = {
