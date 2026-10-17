@@ -227,7 +227,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
                             },
                             enabled = googleAuthState != MainViewModel.GoogleAuthState.LOGGING_IN,
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = if (googleAccountEmail.isNullOrBlank()) MaterialTheme.colorScheme.primary else Color.Gray
+                                containerColor = if (googleAccountEmail.isNullOrBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         ) {
                             Text(
@@ -244,7 +244,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
                     Text("連結帳號: ${googleAccountEmail ?: "未連結 (請登入以啟動自動雲端備份)"}", fontSize = 13.sp)
 
                     val timeStr = if (lastBackupTime != null) dateFormat.format(Date(lastBackupTime!!)) else "尚無備份"
-                    Text("上次成功備份時間: $timeStr", fontSize = 13.sp, color = Color.Gray)
+                    Text("上次成功備份時間: $timeStr", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
                     if (!googleAuthErrorMessage.isNullOrBlank()) {
                         Spacer(modifier = Modifier.height(8.dp))
@@ -372,7 +372,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("${account.name} (${account.type.label})", fontWeight = FontWeight.Bold)
                     }
-                    Text("初始: NT$ ${account.initialBalance}", fontSize = 13.sp, color = Color.Gray)
+                    Text("初始: NT$ ${account.initialBalance}", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -411,7 +411,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
                         Text("${category.name} (${category.type.label})")
                     }
                     if (category.isDefault) {
-                        Text("預設", fontSize = 12.sp, color = Color.Gray)
+                        Text("預設", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
@@ -495,7 +495,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
                             }
                         }
                         is MainViewModel.CloudBackupListState.Empty -> {
-                            Text("未在 Google Drive 找到任何備份檔", color = Color.Gray, fontSize = 13.sp)
+                            Text("未在 Google Drive 找到任何備份檔", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
                         }
                         is MainViewModel.CloudBackupListState.Error -> {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -537,14 +537,14 @@ fun SettingsScreen(viewModel: MainViewModel) {
                                             if (file.summaryText.isNotBlank()) {
                                                 Text("摘要: ${file.summaryText}", fontSize = 11.sp, color = if (file.isDefaultOnly) Color.Red else Color.DarkGray)
                                             }
-                                            Text("File ID: ${file.fileId}", fontSize = 10.sp, color = Color.Gray)
+                                            Text("File ID: ${file.fileId}", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                         }
                                     }
                                 }
                             }
                         }
                         else -> {
-                            Text("尚未載入備份列表", color = Color.Gray, fontSize = 13.sp)
+                            Text("尚未載入備份列表", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
                         }
                     }
 
@@ -561,7 +561,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
                             }
                         }
                     } else {
-                        Text("請明確在上方列表中點選要還原的備份檔", color = Color.Gray, fontSize = 12.sp)
+                        Text("請明確在上方列表中點選要還原的備份檔", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
                     }
 
                     // 還原執行階段與預覽狀態展示

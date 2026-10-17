@@ -116,7 +116,7 @@ fun TransactionsScreen(viewModel: MainViewModel) {
                 Button(
                     onClick = { selectedTypeFilter = null },
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (selectedTypeFilter == null) MaterialTheme.colorScheme.primary else Color.LightGray
+                        containerColor = if (selectedTypeFilter == null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
                     )
                 ) {
                     Text("全部")
@@ -124,7 +124,7 @@ fun TransactionsScreen(viewModel: MainViewModel) {
                 Button(
                     onClick = { selectedTypeFilter = TransactionType.EXPENSE },
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (selectedTypeFilter == TransactionType.EXPENSE) MaterialTheme.colorScheme.primary else Color.LightGray
+                        containerColor = if (selectedTypeFilter == TransactionType.EXPENSE) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
                     )
                 ) {
                     Text("支出")
@@ -132,7 +132,7 @@ fun TransactionsScreen(viewModel: MainViewModel) {
                 Button(
                     onClick = { selectedTypeFilter = TransactionType.INCOME },
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (selectedTypeFilter == TransactionType.INCOME) MaterialTheme.colorScheme.primary else Color.LightGray
+                        containerColor = if (selectedTypeFilter == TransactionType.INCOME) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
                     )
                 ) {
                     Text("收入")
@@ -140,7 +140,7 @@ fun TransactionsScreen(viewModel: MainViewModel) {
                 Button(
                     onClick = { selectedTypeFilter = TransactionType.TRANSFER },
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (selectedTypeFilter == TransactionType.TRANSFER) MaterialTheme.colorScheme.primary else Color.LightGray
+                        containerColor = if (selectedTypeFilter == TransactionType.TRANSFER) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
                     )
                 ) {
                     Text("轉帳")
@@ -152,7 +152,7 @@ fun TransactionsScreen(viewModel: MainViewModel) {
             // 交易列表
             if (filteredTransactions.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("查無符合紀錄", color = Color.Gray)
+                    Text("查無符合紀錄", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             } else {
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -185,13 +185,13 @@ fun TransactionsScreen(viewModel: MainViewModel) {
                                         Text(
                                             text = account?.name ?: "帳戶",
                                             fontSize = 12.sp,
-                                            color = Color.Gray
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                         if (tx.type == TransactionType.TRANSFER && targetAccount != null) {
                                             Text(
                                                 text = " ➔ ${targetAccount.name}",
                                                 fontSize = 12.sp,
-                                                color = Color.Gray
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                         }
                                     }
@@ -201,14 +201,14 @@ fun TransactionsScreen(viewModel: MainViewModel) {
                                     Text(
                                         text = dateFormat.format(Date(tx.dateMillis)),
                                         fontSize = 11.sp,
-                                        color = Color.Gray
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
 
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     val color = when (tx.type) {
-                                        TransactionType.INCOME -> Color(0xFF2E7D32)
-                                        TransactionType.EXPENSE -> Color(0xFFC62828)
+                                        TransactionType.INCOME -> MaterialTheme.colorScheme.primary
+                                        TransactionType.EXPENSE -> MaterialTheme.colorScheme.error
                                         TransactionType.TRANSFER -> Color.DarkGray
                                     }
                                     val prefix = when (tx.type) {
@@ -225,11 +225,11 @@ fun TransactionsScreen(viewModel: MainViewModel) {
                                     )
                                     if (tx.loanId == null && tx.repaymentId == null) {
                                         IconButton(onClick = { viewModel.deleteTransaction(tx.id) }) {
-                                            Icon(Icons.Default.Delete, contentDescription = "刪除", tint = Color.Gray)
+                                            Icon(Icons.Default.Delete, contentDescription = "刪除", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                                         }
                                     } else {
                                         IconButton(onClick = { viewModel.setUiMessage("借貸金流請至借貸管理頁面修改") }) {
-                                            Icon(Icons.Default.Info, contentDescription = "無法直接刪除", tint = Color.LightGray)
+                                            Icon(Icons.Default.Info, contentDescription = "無法直接刪除", tint = MaterialTheme.colorScheme.outline)
                                         }
                                     }
                                 }
@@ -315,7 +315,7 @@ fun AddTransactionDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
                         Button(
                             onClick = { if (amountText.isNotEmpty()) amountText = amountText.dropLast(1) },
                             modifier = Modifier.padding(2.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color.LightGray)
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.outline)
                         ) {
                             Text("⌫")
                         }
@@ -324,7 +324,7 @@ fun AddTransactionDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
                         Button(
                             onClick = { amountText = "" },
                             modifier = Modifier.padding(2.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color.LightGray)
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.outline)
                         ) {
                             Text("C")
                         }

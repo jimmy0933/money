@@ -180,18 +180,18 @@ fun LoansScreen(viewModel: MainViewModel) {
                         ) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text("總待收回", fontSize = 14.sp, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                                Text("NT$ $totalLendOutstanding", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
+                                Text("NT$ $totalLendOutstanding", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                             }
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text("總待償還", fontSize = 14.sp, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                                Text("NT$ $totalBorrowOutstanding", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFFC62828))
+                                Text("NT$ $totalBorrowOutstanding", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
                             }
                         }
                     }
 
                     if (filteredLoans.isEmpty()) {
                         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text("尚無相關借貸紀錄", color = Color.Gray)
+                            Text("尚無相關借貸紀錄", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     } else {
                         LazyColumn(
@@ -219,7 +219,7 @@ fun LoansScreen(viewModel: MainViewModel) {
                         }
                         if (contactSummaries.isEmpty()) {
                             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Text("尚無借貸對象紀錄", color = Color.Gray)
+                                Text("尚無借貸對象紀錄", color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         } else {
                             LazyColumn(
@@ -306,16 +306,16 @@ fun LoanCard(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Column {
-                    Text("原始金額: NT$ ${loan.amount}", fontSize = 13.sp, color = Color.Gray)
-                    Text("已還金額: NT$ ${loanDetail.repaidAmount}", fontSize = 13.sp, color = Color.Gray)
+                    Text("原始金額: NT$ ${loan.amount}", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("已還金額: NT$ ${loanDetail.repaidAmount}", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Column(horizontalAlignment = Alignment.End) {
-                    Text("剩餘未還", fontSize = 12.sp, color = Color.Gray)
+                    Text("剩餘未還", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(
                         "NT$ ${loanDetail.remainingAmount}",
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (loanDetail.remainingAmount > 0) Color(0xFFC62828) else Color(0xFF2E7D32)
+                        color = if (loanDetail.remainingAmount > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
                     )
                 }
             }
@@ -326,11 +326,11 @@ fun LoanCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                val dueStr = if (loan.dueDateMillis != null) java.text.SimpleDateFormat("yyyy/MM/dd", java.util.Locale.TAIWAN).format(Date(loan.dueDateMillis)) else "無期限"
-                Text("借出日期: ${java.text.SimpleDateFormat("yyyy/MM/dd", java.util.Locale.TAIWAN).format(Date(loan.dateMillis))} | 到期日: $dueStr", fontSize = 11.sp, color = Color.Gray)
+                val dueStr = if (loan.dueDateMillis != null) dateFormat.format(Date(loan.dueDateMillis)) else "無期限"
+                Text("借出日期: ${dateFormat.format(Date(loan.dateMillis))} | 到期日: $dueStr", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
                 IconButton(onClick = onDelete) {
-                    Icon(Icons.Default.Delete, contentDescription = "刪除", tint = Color.Gray)
+                    Icon(Icons.Default.Delete, contentDescription = "刪除", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -341,7 +341,7 @@ fun LoanCard(
 fun StatusChip(status: LoanStatus, isOverdue: Boolean) {
     val (bgColor, textColor, label) = when {
         isOverdue -> Triple(Color(0xFFFFEBEE), Color.Red, "已逾期")
-        status == LoanStatus.PAID -> Triple(Color(0xFFE8F5E9), Color(0xFF2E7D32), "已結清")
+        status == LoanStatus.PAID -> Triple(Color(0xFFE8F5E9), MaterialTheme.colorScheme.primary, "已結清")
         status == LoanStatus.PARTIAL -> Triple(Color(0xFFFFF3E0), Color(0xFFE65100), "部分還款")
         else -> Triple(Color(0xFFE3F2FD), Color(0xFF1565C0), "未還款")
     }
@@ -381,11 +381,11 @@ fun ContactSummaryCard(summary: ContactSummary, onClick: () -> Unit) {
                     Text(summary.contact.name, fontWeight = FontWeight.Bold, fontSize = 18.sp)
                 }
                 if (summary.contact.phone.isNotBlank()) {
-                    Text(summary.contact.phone, fontSize = 12.sp, color = Color.Gray)
+                    Text(summary.contact.phone, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             if (summary.contact.note.isNotBlank()) {
-                Text(summary.contact.note, fontSize = 12.sp, color = Color.Gray, modifier = Modifier.padding(top = 4.dp))
+                Text(summary.contact.note, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
             }
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -397,19 +397,19 @@ fun ContactSummaryCard(summary: ContactSummary, onClick: () -> Unit) {
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Column {
-                    Text("我借給對方", fontSize = 12.sp, color = Color.Gray)
+                    Text("我借給對方", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     val formattedTotalLend = java.text.NumberFormat.getNumberInstance(java.util.Locale.US).format(summary.totalLendAmount)
                     val formattedOutstandingLend = java.text.NumberFormat.getNumberInstance(java.util.Locale.US).format(summary.outstandingLend)
                     Text("總借出: NT$ $formattedTotalLend", fontSize = 13.sp)
-                    Text("尚欠未收: NT$ $formattedOutstandingLend", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
+                    Text("尚欠未收: NT$ $formattedOutstandingLend", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                 }
 
                 Column(horizontalAlignment = Alignment.End) {
                     val formattedTotalBorrow = java.text.NumberFormat.getNumberInstance(java.util.Locale.US).format(summary.totalBorrowAmount)
                     val formattedOutstandingBorrow = java.text.NumberFormat.getNumberInstance(java.util.Locale.US).format(summary.outstandingBorrow)
-                    Text("我向對方借", fontSize = 12.sp, color = Color.Gray)
+                    Text("我向對方借", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text("總借入: NT$ $formattedTotalBorrow", fontSize = 13.sp)
-                    Text("尚欠未還: NT$ $formattedOutstandingBorrow", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFFC62828))
+                    Text("尚欠未還: NT$ $formattedOutstandingBorrow", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
                 }
             }
         }
@@ -448,7 +448,7 @@ fun LoanDetailView(
                 Text(
                     "借貸類型: ${loanWithDetails.loan.type.label}",
                     fontSize = 14.sp,
-                    color = if (loanWithDetails.loan.type == LoanType.LEND) Color(0xFF2E7D32) else Color(0xFFC62828),
+                    color = if (loanWithDetails.loan.type == LoanType.LEND) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
                     fontWeight = FontWeight.Bold
                 )
                 Spacer(modifier = Modifier.height(8.dp))
@@ -460,10 +460,10 @@ fun LoanDetailView(
                 Spacer(modifier = Modifier.height(8.dp))
                 Text("原始本金: NT$ ${loanWithDetails.loan.amount}", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 Text("累計已還: NT$ ${loanWithDetails.repaidAmount}", fontSize = 16.sp)
-                Text("剩餘金額: NT$ ${loanWithDetails.remainingAmount}", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = if (loanWithDetails.remainingAmount == 0L) Color(0xFF2E7D32) else Color(0xFFC62828))
+                Text("剩餘金額: NT$ ${loanWithDetails.remainingAmount}", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = if (loanWithDetails.remainingAmount == 0L) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
                 if (loanWithDetails.loan.note.isNotBlank()) {
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text("備註: ${loanWithDetails.loan.note}", fontSize = 13.sp, color = Color.Gray)
+                    Text("備註: ${loanWithDetails.loan.note}", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -487,7 +487,7 @@ fun LoanDetailView(
 
         if (loanWithDetails.repayments.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("尚無還款紀錄", color = Color.Gray)
+                Text("尚無還款紀錄", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -506,13 +506,13 @@ fun LoanDetailView(
                             Column {
                                 val formattedRepayment = java.text.NumberFormat.getNumberInstance(java.util.Locale.US).format(repayment.amount)
                                 Text("還款金額: NT$ $formattedRepayment", fontWeight = FontWeight.Bold)
-                                Text(java.text.SimpleDateFormat("yyyy/MM/dd", java.util.Locale.TAIWAN).format(Date(repayment.dateMillis)), fontSize = 12.sp, color = Color.Gray)
+                                Text(dateFormat.format(Date(repayment.dateMillis)), fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 if (repayment.note.isNotBlank()) {
                                     Text(repayment.note, fontSize = 13.sp)
                                 }
                             }
                             IconButton(onClick = { viewModel.deleteLoanRepayment(repayment.id) }) {
-                                Icon(Icons.Default.Delete, contentDescription = "刪除還款", tint = Color.Gray)
+                                Icon(Icons.Default.Delete, contentDescription = "刪除還款", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     }
@@ -566,7 +566,7 @@ fun ContactDetailView(
                 Spacer(modifier = Modifier.width(8.dp))
                 Button(
                     onClick = { showDeleteConfirmDialog = true },
-                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Color(0xFFC62828))
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                 ) {
                     Text("停用")
                 }
@@ -893,7 +893,7 @@ fun AddRepaymentDialog(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())
             ) {
-                Text("剩餘尚未歸還: NT$ ${loanWithDetails.remainingAmount}", fontWeight = FontWeight.Bold, color = Color(0xFFC62828))
+                Text("剩餘尚未歸還: NT$ ${loanWithDetails.remainingAmount}", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
 
                 OutlinedTextField(
                     value = amountText,
