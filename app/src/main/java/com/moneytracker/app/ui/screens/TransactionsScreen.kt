@@ -102,7 +102,8 @@ fun TransactionsScreen(viewModel: MainViewModel) {
                 modifier = Modifier.fillMaxWidth(),
                 placeholder = { Text("搜尋備註關鍵字...") },
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                singleLine = true
+                singleLine = true,
+                shape = RoundedCornerShape(50)
             )
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -161,7 +162,9 @@ fun TransactionsScreen(viewModel: MainViewModel) {
 
                         Card(
                             modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                            shape = RoundedCornerShape(16.dp),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                         ) {
                             Row(
                                 modifier = Modifier
@@ -263,7 +266,7 @@ fun AddTransactionDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
         onDismissRequest = onDismiss,
         title = { Text("新增記帳紀錄") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 TabRow(selectedTabIndex = selectedTypeIndex) {
                     Tab(selected = selectedTypeIndex == 0, onClick = { selectedTypeIndex = 0 }) {
                         Text("支出", modifier = Modifier.padding(8.dp))
