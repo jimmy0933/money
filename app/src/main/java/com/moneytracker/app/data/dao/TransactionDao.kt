@@ -17,6 +17,9 @@ interface TransactionDao {
     @Query("SELECT * FROM transactions WHERE isDeleted = 0 ORDER BY dateMillis DESC, id DESC")
     suspend fun getAllTransactions(): List<TransactionEntity>
 
+    @Query("SELECT * FROM transactions ORDER BY dateMillis DESC, id DESC")
+    suspend fun getAllTransactionsWithDeleted(): List<TransactionEntity>
+
     @Query("SELECT * FROM transactions WHERE id = :id AND isDeleted = 0")
     suspend fun getTransactionById(id: Long): TransactionEntity?
 

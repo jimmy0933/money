@@ -94,7 +94,13 @@ class AppRepository(private val db: AppDatabase) {
     fun getAllTransactionsFlow(): Flow<List<TransactionEntity>> = transactionDao.getAllTransactionsFlow()
     suspend fun insertTransaction(transaction: TransactionEntity): Long = DataOperationCoordinator.runWriteOperation { transactionDao.insertTransaction(transaction) }
     suspend fun updateTransaction(transaction: TransactionEntity) = DataOperationCoordinator.runWriteOperation { transactionDao.updateTransaction(transaction) }
-    suspend fun softDeleteTransaction(id: Long) = DataOperationCoordinator.runWriteOperation { transactionDao.softDeleteTransaction(id) }
+    suspend fun softDeleteTransaction(id: Long) = DataOperationCoordinator.runWriteOperation {
+        val tx = transactionDao.getTransactionById(id)
+        if (tx != null && (tx.loanId != null || tx.repaymentId != null)) {
+            throw IllegalArgumentException("借貸相關金流不可單獨刪除，請由借貸管理操作")
+        }
+        transactionDao.softDeleteTransaction(id)
+    }
 
     fun getIncomeSumBetweenFlow(startMillis: Long, endMillis: Long): Flow<Long> =
         transactionDao.getIncomeSumBetweenFlow(startMillis, endMillis)

@@ -17,6 +17,9 @@ interface LoanDao {
     @Query("SELECT * FROM loans WHERE isDeleted = 0 ORDER BY dateMillis DESC, id DESC")
     suspend fun getAllLoans(): List<LoanEntity>
 
+    @Query("SELECT * FROM loans ORDER BY dateMillis DESC, id DESC")
+    suspend fun getAllLoansWithDeleted(): List<LoanEntity>
+
     @Query("SELECT * FROM loans WHERE type = :type AND isDeleted = 0 ORDER BY dateMillis DESC, id DESC")
     fun getLoansByTypeFlow(type: LoanType): Flow<List<LoanEntity>>
 

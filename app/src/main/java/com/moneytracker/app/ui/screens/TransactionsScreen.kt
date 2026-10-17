@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
@@ -215,14 +216,21 @@ fun TransactionsScreen(viewModel: MainViewModel) {
                                         TransactionType.EXPENSE -> "-"
                                         TransactionType.TRANSFER -> ""
                                     }
+                                    val formattedAmount = java.text.NumberFormat.getNumberInstance(java.util.Locale.US).format(tx.amount)
                                     Text(
-                                        text = "$prefix NT$ ${tx.amount}",
+                                        text = "$prefix NT$ $formattedAmount",
                                         fontWeight = FontWeight.Bold,
                                         color = color,
                                         fontSize = 16.sp
                                     )
-                                    IconButton(onClick = { viewModel.deleteTransaction(tx.id) }) {
-                                        Icon(Icons.Default.Delete, contentDescription = "刪除", tint = Color.Gray)
+                                    if (tx.loanId == null && tx.repaymentId == null) {
+                                        IconButton(onClick = { viewModel.deleteTransaction(tx.id) }) {
+                                            Icon(Icons.Default.Delete, contentDescription = "刪除", tint = Color.Gray)
+                                        }
+                                    } else {
+                                        IconButton(onClick = { viewModel.setUiMessage("借貸金流請至借貸管理頁面修改") }) {
+                                            Icon(Icons.Default.Info, contentDescription = "無法直接刪除", tint = Color.LightGray)
+                                        }
                                     }
                                 }
                             }

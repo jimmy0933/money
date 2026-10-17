@@ -38,12 +38,12 @@ object BackupCryptoManager {
             BackupPayload(
                 schemaVersion = 1,
                 createdAt = System.currentTimeMillis(),
-                accounts = db.accountDao().getAllAccounts(),
-                categories = db.categoryDao().getAllCategories(),
-                transactions = db.transactionDao().getAllTransactions(),
-                contacts = db.contactDao().getAllContacts(),
-                loans = db.loanDao().getAllLoans(),
-                loanRepayments = db.loanRepaymentDao().getAllRepayments(),
+                accounts = db.accountDao().getAllAccountsWithDeleted(),
+                categories = db.categoryDao().getAllCategoriesWithDeleted(),
+                transactions = db.transactionDao().getAllTransactionsWithDeleted(),
+                contacts = db.contactDao().getAllContactsWithDeleted(),
+                loans = db.loanDao().getAllLoansWithDeleted(),
+                loanRepayments = db.loanRepaymentDao().getAllRepaymentsWithDeleted(),
                 settings = emptyList()
             )
         }

@@ -16,6 +16,9 @@ interface ContactDao {
     @Query("SELECT * FROM contacts WHERE isDeleted = 0 ORDER BY name ASC")
     suspend fun getAllContacts(): List<ContactEntity>
 
+    @Query("SELECT * FROM contacts ORDER BY name ASC")
+    suspend fun getAllContactsWithDeleted(): List<ContactEntity>
+
     @Query("SELECT * FROM contacts WHERE id = :id AND isDeleted = 0")
     suspend fun getContactById(id: Long): ContactEntity?
 
