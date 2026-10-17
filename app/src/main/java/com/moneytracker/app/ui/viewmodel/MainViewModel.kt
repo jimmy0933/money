@@ -326,38 +326,8 @@ class MainViewModel @JvmOverloads constructor(
         }
     }
 
-    fun addContact(name: String, phone: String, note: String) {
-        viewModelScope.launch(Dispatchers.IO) {
-            DatabaseInitializer.ensureInitialized(db)
-            val contact = repository.getOrCreateContact(name, phone)
-            if (note.isNotBlank() && contact.note != note) {
-                com.moneytracker.app.data.repository.DataOperationCoordinator.runWriteOperation {
-                    db.contactDao().updateContact(contact.copy(note = note))
-                }
-            }
-            _uiMessage.value = "新增聯絡人成功"
-        }
-    }
 
-    fun updateContact(contact: com.moneytracker.app.data.entity.ContactEntity) {
-        viewModelScope.launch(Dispatchers.IO) {
-            DatabaseInitializer.ensureInitialized(db)
-            com.moneytracker.app.data.repository.DataOperationCoordinator.runWriteOperation {
-                db.contactDao().updateContact(contact)
-            }
-            _uiMessage.value = "更新聯絡人成功"
-        }
-    }
 
-    fun deleteContact(id: Long) {
-        viewModelScope.launch(Dispatchers.IO) {
-            DatabaseInitializer.ensureInitialized(db)
-            com.moneytracker.app.data.repository.DataOperationCoordinator.runWriteOperation {
-                db.contactDao().softDeleteContact(id)
-            }
-            _uiMessage.value = "已刪除聯絡人"
-        }
-    }
 
     fun addContact(name: String, phone: String, note: String, onSuccess: ((Long) -> Unit)? = null) {
         viewModelScope.launch(Dispatchers.IO) {
