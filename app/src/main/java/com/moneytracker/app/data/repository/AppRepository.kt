@@ -112,6 +112,20 @@ class AppRepository(private val db: AppDatabase) {
     // Contacts
     // -------------------------------------------------------------
     fun getAllContactsFlow(): Flow<List<ContactEntity>> = contactDao.getAllContactsFlow()
+
+    suspend fun addContact(name: String, phone: String = "", note: String = ""): Long {
+        val existing = contactDao.getContactByName(name.trim())
+        if (existing != null) return existing.id
+        return contactDao.insertContact(ContactEntity(name = name.trim(), phone = phone.trim(), note = note.trim()))
+    }
+
+    suspend fun updateContact(contact: ContactEntity) {
+        contactDao.updateContact(contact.copy(updatedAt = System.currentTimeMillis()))
+    }
+
+    suspend fun softDeleteContact(id: Long) {
+        contactDao.softDeleteContact(id)
+    }
     suspend fun getOrCreateContact(name: String, phone: String = ""): ContactEntity {
         val existing = contactDao.getContactByName(name.trim())
         if (existing != null) return existing
@@ -208,11 +222,16 @@ class AppRepository(private val db: AppDatabase) {
         dateMillis: Long,
         dueDateMillis: Long?,
         accountId: Long,
-        note: String
+        note: String,
+        contactId: Long? = null
     ): Long {
         return DataOperationCoordinator.runWriteOperation {
             db.withTransaction {
-                val contact = getOrCreateContact(contactName)
+                val contact = if (contactId != null) {
+                    contactDao.getContactById(contactId) ?: getOrCreateContact(contactName)
+                } else {
+                    getOrCreateContact(contactName)
+                }
 
                 val loan = LoanEntity(
                     contactId = contact.id,

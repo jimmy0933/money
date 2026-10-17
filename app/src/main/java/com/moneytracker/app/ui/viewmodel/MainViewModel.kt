@@ -359,6 +359,32 @@ class MainViewModel @JvmOverloads constructor(
         }
     }
 
+    fun addContact(name: String, phone: String, note: String, onSuccess: ((Long) -> Unit)? = null) {
+        viewModelScope.launch(Dispatchers.IO) {
+            DatabaseInitializer.ensureInitialized(db)
+            val id = repository.addContact(name, phone, note)
+            _uiMessage.value = "新增對象成功"
+            onSuccess?.invoke(id)
+        }
+    }
+
+    fun updateContact(contact: com.moneytracker.app.data.entity.ContactEntity, onSuccess: (() -> Unit)? = null) {
+        viewModelScope.launch(Dispatchers.IO) {
+            DatabaseInitializer.ensureInitialized(db)
+            repository.updateContact(contact)
+            _uiMessage.value = "更新對象成功"
+            onSuccess?.invoke()
+        }
+    }
+
+    fun deleteContact(id: Long) {
+        viewModelScope.launch(Dispatchers.IO) {
+            DatabaseInitializer.ensureInitialized(db)
+            repository.softDeleteContact(id)
+            _uiMessage.value = "停用對象成功"
+        }
+    }
+
     fun addLoan(
         contactName: String,
         type: LoanType,
