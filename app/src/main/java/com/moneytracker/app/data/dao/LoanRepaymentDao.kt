@@ -19,6 +19,9 @@ interface LoanRepaymentDao {
     @Query("SELECT * FROM loan_repayments WHERE isDeleted = 0")
     suspend fun getAllRepayments(): List<LoanRepaymentEntity>
 
+    @Query("SELECT * FROM loan_repayments")
+    suspend fun getAllRepaymentsWithDeleted(): List<LoanRepaymentEntity>
+
     @Query("SELECT * FROM loan_repayments WHERE id = :id AND isDeleted = 0")
     suspend fun getRepaymentById(id: Long): LoanRepaymentEntity?
 

@@ -17,6 +17,9 @@ interface CategoryDao {
     @Query("SELECT * FROM categories WHERE isDeleted = 0 ORDER BY id ASC")
     suspend fun getAllCategories(): List<CategoryEntity>
 
+    @Query("SELECT * FROM categories ORDER BY id ASC")
+    suspend fun getAllCategoriesWithDeleted(): List<CategoryEntity>
+
     @Query("SELECT * FROM categories WHERE type = :type AND isDeleted = 0 ORDER BY id ASC")
     fun getCategoriesByTypeFlow(type: TransactionType): Flow<List<CategoryEntity>>
 

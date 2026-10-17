@@ -16,6 +16,9 @@ interface AccountDao {
     @Query("SELECT * FROM accounts WHERE isDeleted = 0 ORDER BY id ASC")
     suspend fun getAllAccounts(): List<AccountEntity>
 
+    @Query("SELECT * FROM accounts ORDER BY id ASC")
+    suspend fun getAllAccountsWithDeleted(): List<AccountEntity>
+
     @Query("SELECT * FROM accounts WHERE id = :id AND isDeleted = 0")
     suspend fun getAccountById(id: Long): AccountEntity?
 

@@ -169,6 +169,8 @@ class MainViewModel @JvmOverloads constructor(
 
     private val _uiMessage = MutableStateFlow<String?>(null)
     val uiMessage: StateFlow<String?> = _uiMessage.asStateFlow()
+    private val _isLoading = kotlinx.coroutines.flow.MutableStateFlow(false)
+    val isLoading: kotlinx.coroutines.flow.StateFlow<Boolean> = _isLoading.asStateFlow()
 
     init {
         loadSettings()
@@ -314,9 +316,46 @@ class MainViewModel @JvmOverloads constructor(
 
     fun deleteTransaction(id: Long) {
         viewModelScope.launch(Dispatchers.IO) {
+            try {
+                DatabaseInitializer.ensureInitialized(db)
+                repository.softDeleteTransaction(id)
+                _uiMessage.value = "已刪除交易"
+            } catch (e: IllegalArgumentException) {
+                _uiMessage.value = e.message
+            }
+        }
+    }
+
+    fun addContact(name: String, phone: String, note: String) {
+        viewModelScope.launch(Dispatchers.IO) {
             DatabaseInitializer.ensureInitialized(db)
-            repository.softDeleteTransaction(id)
-            _uiMessage.value = "已刪除交易"
+            val contact = repository.getOrCreateContact(name, phone)
+            if (note.isNotBlank() && contact.note != note) {
+                com.moneytracker.app.data.repository.DataOperationCoordinator.runWriteOperation {
+                    db.contactDao().updateContact(contact.copy(note = note))
+                }
+            }
+            _uiMessage.value = "新增聯絡人成功"
+        }
+    }
+
+    fun updateContact(contact: com.moneytracker.app.data.entity.ContactEntity) {
+        viewModelScope.launch(Dispatchers.IO) {
+            DatabaseInitializer.ensureInitialized(db)
+            com.moneytracker.app.data.repository.DataOperationCoordinator.runWriteOperation {
+                db.contactDao().updateContact(contact)
+            }
+            _uiMessage.value = "更新聯絡人成功"
+        }
+    }
+
+    fun deleteContact(id: Long) {
+        viewModelScope.launch(Dispatchers.IO) {
+            DatabaseInitializer.ensureInitialized(db)
+            com.moneytracker.app.data.repository.DataOperationCoordinator.runWriteOperation {
+                db.contactDao().softDeleteContact(id)
+            }
+            _uiMessage.value = "已刪除聯絡人"
         }
     }
 
@@ -327,20 +366,29 @@ class MainViewModel @JvmOverloads constructor(
         dateMillis: Long,
         dueDateMillis: Long?,
         accountId: Long,
-        note: String
+        note: String,
+        onSuccess: () -> Unit = {}
     ) {
         viewModelScope.launch(Dispatchers.IO) {
-            DatabaseInitializer.ensureInitialized(db)
-            repository.createLoanTransaction(
-                contactName = contactName,
-                type = type,
-                amount = amount,
-                dateMillis = dateMillis,
-                dueDateMillis = dueDateMillis,
-                accountId = accountId,
-                note = note
-            )
-            _uiMessage.value = "新增借貸紀錄成功"
+            _isLoading.value = true
+            try {
+                DatabaseInitializer.ensureInitialized(db)
+                repository.createLoanTransaction(
+                    contactName = contactName,
+                    type = type,
+                    amount = amount,
+                    dateMillis = dateMillis,
+                    dueDateMillis = dueDateMillis,
+                    accountId = accountId,
+                    note = note
+                )
+                _uiMessage.value = "新增借貸紀錄成功"
+                kotlinx.coroutines.withContext(Dispatchers.Main) { onSuccess() }
+            } catch (e: Exception) {
+                _uiMessage.value = "新增失敗: ${e.message}"
+            } finally {
+                _isLoading.value = false
+            }
         }
     }
 
@@ -349,15 +397,22 @@ class MainViewModel @JvmOverloads constructor(
         amount: Long,
         dateMillis: Long,
         accountId: Long,
-        note: String
+        note: String,
+        onSuccess: () -> Unit = {}
     ) {
         viewModelScope.launch(Dispatchers.IO) {
-            DatabaseInitializer.ensureInitialized(db)
-            val result = repository.addRepayment(loanId, amount, dateMillis, accountId, note)
-            if (result.isSuccess) {
-                _uiMessage.value = "新增還款成功"
-            } else {
-                _uiMessage.value = result.exceptionOrNull()?.message ?: "還款失敗"
+            _isLoading.value = true
+            try {
+                DatabaseInitializer.ensureInitialized(db)
+                val result = repository.addRepayment(loanId, amount, dateMillis, accountId, note)
+                if (result.isSuccess) {
+                    _uiMessage.value = "新增還款成功"
+                    kotlinx.coroutines.withContext(Dispatchers.Main) { onSuccess() }
+                } else {
+                    _uiMessage.value = result.exceptionOrNull()?.message ?: "還款失敗"
+                }
+            } finally {
+                _isLoading.value = false
             }
         }
     }

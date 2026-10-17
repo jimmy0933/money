@@ -1,0 +1,10 @@
+feat: Implement loan management, validation, and UI improvements
+
+- Prevent direct deletion of loan-related transactions in `AppRepository` and UI.
+- Use `ExposedDropdownMenuBox` for account and contact selection in loan dialogs.
+- Add contact creation and management logic to `MainViewModel`.
+- Fix UI state refresh issues by observing active `loanId` and `contactId`.
+- Add DatePickers for loan dates.
+- Format monetary amounts with comma separators.
+- Include soft-deleted accounts and categories in Google Drive backups to preserve relational integrity.
+- Add `isLoading` states for submission reliability.
