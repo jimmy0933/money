@@ -87,7 +87,7 @@ fun StatisticsScreen(viewModel: MainViewModel) {
             0 -> {
                 if (totalExpense == 0L) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("尚無支出數據可呈現", color = Color.Gray)
+                        Text("尚無支出數據可呈現", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 } else {
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -193,7 +193,7 @@ fun StatisticsScreen(viewModel: MainViewModel) {
                                         .padding(bottom = 8.dp)
                                 ) {
                                     Canvas(modifier = Modifier.fillMaxSize()) {
-                                        drawRect(color = Color(0xFF2E7D32))
+                                        drawRect(color = MaterialTheme.colorScheme.primary)
                                     }
                                 }
                                 Text("收入", fontSize = 12.sp)
@@ -210,7 +210,7 @@ fun StatisticsScreen(viewModel: MainViewModel) {
                                         .padding(bottom = 8.dp)
                                 ) {
                                     Canvas(modifier = Modifier.fillMaxSize()) {
-                                        drawRect(color = Color(0xFFC62828))
+                                        drawRect(color = MaterialTheme.colorScheme.error)
                                     }
                                 }
                                 Text("支出", fontSize = 12.sp)

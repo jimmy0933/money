@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.AccountBalance
@@ -41,6 +42,9 @@ import com.moneytracker.app.ui.viewmodel.MainViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.text.DecimalFormat
+
+fun Long.toFormattedString(): String = DecimalFormat("#,###").format(this)
 
 @Composable
 fun HomeScreen(viewModel: MainViewModel) {
@@ -66,6 +70,18 @@ fun HomeScreen(viewModel: MainViewModel) {
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         // 本月概覽卡片
+
+        item {
+            Button(
+                onClick = { /* TODO: Navigate to Add Transaction */ },
+                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Icon(Icons.Default.Add, contentDescription = null)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("快速記帳", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            }
+        }
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -92,29 +108,29 @@ fun HomeScreen(viewModel: MainViewModel) {
                     ) {
                         Column {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.ArrowUpward, contentDescription = null, tint = Color(0xFF2E7D32))
+                                Icon(Icons.Default.ArrowUpward, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text("本月收入", fontSize = 14.sp)
                             }
                             Text(
-                                text = "NT$ $monthlyIncome",
+                                text = "NT$ ${monthlyIncome.toFormattedString()}",
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF2E7D32)
+                                color = MaterialTheme.colorScheme.primary
                             )
                         }
 
                         Column {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.ArrowDownward, contentDescription = null, tint = Color(0xFFC62828))
+                                Icon(Icons.Default.ArrowDownward, contentDescription = null, tint = MaterialTheme.colorScheme.error)
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text("本月支出", fontSize = 14.sp)
                             }
                             Text(
-                                text = "NT$ $monthlyExpense",
+                                text = "NT$ ${monthlyExpense.toFormattedString()}",
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFFC62828)
+                                color = MaterialTheme.colorScheme.error
                             )
                         }
 
@@ -122,10 +138,10 @@ fun HomeScreen(viewModel: MainViewModel) {
                             Text("收支差額", fontSize = 14.sp)
                             val net = monthlyIncome - monthlyExpense
                             Text(
-                                text = "NT$ $net",
+                                text = "NT$ ${net.toFormattedString()}",
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = if (net >= 0) Color(0xFF2E7D32) else Color(0xFFC62828)
+                                color = if (net >= 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
                             )
                         }
                     }
@@ -147,7 +163,7 @@ fun HomeScreen(viewModel: MainViewModel) {
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("目前帳戶總餘額：", style = MaterialTheme.typography.titleMedium)
                         Text(
-                            "NT$ $totalAccountBalance",
+                            "NT$ ${totalAccountBalance.toFormattedString()}",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary
@@ -161,12 +177,12 @@ fun HomeScreen(viewModel: MainViewModel) {
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Column {
-                            Text("待收回借款 (借出)", fontSize = 13.sp, color = Color.Gray)
-                            Text("NT$ $outstandingLend", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            Text("待收回借款 (借出)", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("NT$ ${outstandingLend.toFormattedString()}", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                         }
                         Column {
-                            Text("待償還借款 (借入)", fontSize = 13.sp, color = Color.Gray)
-                            Text("NT$ $outstandingBorrow", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            Text("待償還借款 (借入)", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("NT$ ${outstandingBorrow.toFormattedString()}", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -204,7 +220,7 @@ fun HomeScreen(viewModel: MainViewModel) {
 
         if (transactions.isEmpty()) {
             item {
-                Text("尚無交易紀錄", color = Color.Gray, modifier = Modifier.padding(vertical = 16.dp))
+                Text("尚無交易紀錄", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 16.dp))
             }
         } else {
             items(transactions.take(10)) { tx ->
@@ -229,12 +245,12 @@ fun HomeScreen(viewModel: MainViewModel) {
                             Text(
                                 text = dateFormat.format(Date(tx.dateMillis)),
                                 fontSize = 12.sp,
-                                color = Color.Gray
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                         val color = when (tx.type) {
-                            TransactionType.INCOME -> Color(0xFF2E7D32)
-                            TransactionType.EXPENSE -> Color(0xFFC62828)
+                            TransactionType.INCOME -> MaterialTheme.colorScheme.primary
+                            TransactionType.EXPENSE -> MaterialTheme.colorScheme.error
                             TransactionType.TRANSFER -> Color.DarkGray
                         }
                         val prefix = when (tx.type) {
@@ -243,7 +259,7 @@ fun HomeScreen(viewModel: MainViewModel) {
                             TransactionType.TRANSFER -> ""
                         }
                         Text(
-                            text = "$prefix NT$ ${tx.amount}",
+                            text = "$prefix NT$ ${tx.amount.toFormattedString()}",
                             fontWeight = FontWeight.Bold,
                             color = color
                         )
