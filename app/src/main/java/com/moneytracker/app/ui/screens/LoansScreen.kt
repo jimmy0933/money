@@ -50,14 +50,10 @@ import java.util.Calendar
 import com.moneytracker.app.data.entity.ContactEntity
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import android.app.DatePickerDialog
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material.icons.filled.Clear
-import java.util.Calendar
 import androidx.compose.runtime.collectAsState
 
 import androidx.compose.runtime.Composable
@@ -789,26 +785,26 @@ fun AddLoanDialog(viewModel: MainViewModel, contactSummaries: List<ContactSummar
                 )
 
                 OutlinedTextField(
-                    value = dateFormat.format(Date(dateMillis)),
+                    value = java.text.SimpleDateFormat("yyyy/MM/dd", java.util.Locale.TAIWAN).format(Date(dateMillis)),
                     onValueChange = { },
                     label = { Text("借貸發生日期") },
                     modifier = Modifier.fillMaxWidth(),
                     readOnly = true,
                     trailingIcon = {
-                        IconButton(onClick = { showDatePicker = true }) {
+                        IconButton(onClick = { datePickerDialog.show() }) {
                             Icon(Icons.Default.Add, contentDescription = "選擇日期")
                         }
                     }
                 )
 
                 OutlinedTextField(
-                    value = dueDateMillis?.let { dateFormat.format(Date(it)) } ?: "未設定",
+                    value = dueDateMillis?.let { java.text.SimpleDateFormat("yyyy/MM/dd", java.util.Locale.TAIWAN).format(Date(it)) } ?: "未設定",
                     onValueChange = { },
                     label = { Text("預計還款日 (選填)") },
                     modifier = Modifier.fillMaxWidth(),
                     readOnly = true,
                     trailingIcon = {
-                        IconButton(onClick = { showDueDatePicker = true }) {
+                        IconButton(onClick = { dueDatePickerDialog.show() }) {
                             Icon(Icons.Default.Add, contentDescription = "選擇日期")
                         }
                     }
@@ -824,14 +820,15 @@ fun AddLoanDialog(viewModel: MainViewModel, contactSummaries: List<ContactSummar
         },
         confirmButton = {
             val isLoading = viewModel.isLoading.collectAsState()
+            var isSaving by remember { mutableStateOf(false) }
             Button(
-                enabled = !isLoading.value,
+                enabled = !isLoading.value && !isSaving,
                 onClick = {
                     val amount = amountText.toLongOrNull() ?: 0L
                     val acc = selectedAccount
-                    val existingMatch = existingContacts.find { c -> c.name == contactName.trim() }
-                    if (existingMatch != null && selectedContactId == null) {
-                        selectedContactId = existingMatch.id
+                    val existingMatch = contactSummaries.find { c -> c.contact.name == contactName.trim() }?.contact
+                    if (existingMatch != null) {
+                        /* selectedContactId is not accessible here, nor do we need to set it during adding a loan */
                     }
 
                     if (contactName.isNotBlank() && amount > 0 && acc != null) {
@@ -855,51 +852,7 @@ fun AddLoanDialog(viewModel: MainViewModel, contactSummaries: List<ContactSummar
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("取消") }
         }
-    )
-
-    if (showDatePicker) {
-        val datePickerState = rememberDatePickerState(initialSelectedDateMillis = dateMillis)
-        DatePickerDialog(
-            onDismissRequest = { showDatePicker = false },
-            confirmButton = {
-                TextButton(onClick = {
-                    datePickerState.selectedDateMillis?.let { dateMillis = it }
-                    showDatePicker = false
-                }) {
-                    Text("確定")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDatePicker = false }) { Text("取消") }
-            }
-        ) {
-            DatePicker(state = datePickerState)
-        }
-    }
-
-    if (showDueDatePicker) {
-        val datePickerState = rememberDatePickerState(initialSelectedDateMillis = dueDateMillis ?: dateMillis)
-        DatePickerDialog(
-            onDismissRequest = { showDueDatePicker = false },
-            confirmButton = {
-                TextButton(onClick = {
-                    dueDateMillis = datePickerState.selectedDateMillis
-                    showDueDatePicker = false
-                }) {
-                    Text("確定")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    dueDateMillis = null
-                    showDueDatePicker = false
-                }) { Text("清除") }
-            }
-        ) {
-            DatePicker(state = datePickerState)
-        }
-    }
-}
+    )}
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
@@ -931,21 +884,6 @@ fun AddRepaymentDialog(
     )
 
     var errorMessage by remember { mutableStateOf<String?>(null) }
-    val localCalendar = Calendar.getInstance()
-    val calendar = Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC")).apply {
-        set(Calendar.YEAR, localCalendar.get(Calendar.YEAR))
-        set(Calendar.MONTH, localCalendar.get(Calendar.MONTH))
-        set(Calendar.DAY_OF_MONTH, localCalendar.get(Calendar.DAY_OF_MONTH))
-        set(Calendar.HOUR_OF_DAY, 0)
-        set(Calendar.MINUTE, 0)
-        set(Calendar.SECOND, 0)
-        set(Calendar.MILLISECOND, 0)
-    }
-    var dateMillis by remember { mutableStateOf(calendar.timeInMillis) }
-    var showDatePicker by remember { mutableStateOf(false) }
-    val dateFormat = SimpleDateFormat("yyyy/MM/dd", Locale.TAIWAN).apply {
-        timeZone = java.util.TimeZone.getTimeZone("UTC")
-    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1029,8 +967,9 @@ fun AddRepaymentDialog(
         },
         confirmButton = {
             val isLoading = viewModel.isLoading.collectAsState()
+            var isSaving by remember { mutableStateOf(false) }
             Button(
-                enabled = !isLoading.value,
+                enabled = !isLoading.value && !isSaving,
                 onClick = {
                     val amount = amountText.toLongOrNull() ?: 0L
                     val acc = selectedAccount
@@ -1057,25 +996,6 @@ fun AddRepaymentDialog(
         }
     )
 
-    if (showDatePicker) {
-        val datePickerState = rememberDatePickerState(initialSelectedDateMillis = dateMillis)
-        DatePickerDialog(
-            onDismissRequest = { showDatePicker = false },
-            confirmButton = {
-                TextButton(onClick = {
-                    datePickerState.selectedDateMillis?.let { dateMillis = it }
-                    showDatePicker = false
-                }) {
-                    Text("確定")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDatePicker = false }) { Text("取消") }
-            }
-        ) {
-            DatePicker(state = datePickerState)
-        }
-    }
 }
 
 @Composable
