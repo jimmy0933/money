@@ -49,6 +49,6 @@ interface LoanRepaymentDao {
     @Query("UPDATE loan_repayments SET isDeleted = 1, updatedAt = :updatedAt WHERE id = :id")
     suspend fun softDeleteRepayment(id: Long, updatedAt: Long = System.currentTimeMillis())
 
-    @Query("UPDATE loan_repayments SET isDeleted = 1, updatedAt = :updatedAt WHERE loanId = :loanId")
+    @Query("UPDATE loan_repayments SET isDeleted = 1, updatedAt = :updatedAt WHERE loanId = :loanId AND isDeleted = 0")
     suspend fun softDeleteRepaymentsByLoanId(loanId: Long, updatedAt: Long = System.currentTimeMillis())
 }

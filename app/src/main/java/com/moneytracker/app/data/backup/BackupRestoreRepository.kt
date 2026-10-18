@@ -194,14 +194,26 @@ class BackupRestoreRepository(
                         }
 
                         // 驗證借貸狀態與還款加總一致性
-                        val totalRepaid = if (expected.isDeleted) db.loanRepaymentDao().getTotalRepaidForLoanWithDeleted(expected.id) else db.loanRepaymentDao().getTotalRepaidForLoan(expected.id)
+                        // 正確區分已撤銷還款與隨借貸刪除的歷史資料。不可直接把所有已刪除還款視為有效，也不可取消所有完整性驗證。
+                        val totalRepaid = if (!expected.isDeleted) {
+                            db.loanRepaymentDao().getTotalRepaidForLoan(expected.id)
+                        } else {
+                            // 計算已刪除借貸的還款總額，但排除那些在借貸刪除之前就已經單獨撤銷的還款。
+                            // 藉由判斷 updatedAt，如果還款是隨借貸一起刪除的，兩者的 updatedAt 應相同或非常接近。
+                            // 若還款的 updatedAt 明顯早於借貸的 updatedAt，代表它是之前單獨撤銷的，不應計入歷史已還金額。
+                            payload.loanRepayments
+                                .filter { it.loanId == expected.id && (!it.isDeleted || Math.abs(it.updatedAt - expected.updatedAt) <= 10000) }
+                                .sumOf { it.amount }
+                        }
+
                         val calculatedStatus = when {
                             totalRepaid >= expected.amount -> LoanStatus.PAID
                             totalRepaid > 0 -> LoanStatus.PARTIAL
                             else -> LoanStatus.UNPAID
                         }
+
                         if (expected.status != calculatedStatus) {
-                            throw IllegalStateException("還原後借貸狀態與還款加總不相符 (ID: ${expected.id})")
+                            throw IllegalStateException("還原後借貸狀態與還款加總不相符 (ID: ${expected.id}, 預期: ${expected.status}, 計算: \$calculatedStatus, 總金額: \$totalRepaid)")
                         }
                     }
 

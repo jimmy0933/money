@@ -295,22 +295,33 @@ class MainViewModel @JvmOverloads constructor(
         sourceAccountId: Long,
         targetAccountId: Long?,
         categoryId: Long?,
-        note: String
+        note: String,
+        onSuccess: () -> Unit = {},
+        onError: (String) -> Unit = {}
     ) {
         viewModelScope.launch(Dispatchers.IO) {
-            DatabaseInitializer.ensureInitialized(db)
-            repository.insertTransaction(
-                TransactionEntity(
-                    type = type,
-                    amount = amount,
-                    dateMillis = dateMillis,
-                    sourceAccountId = sourceAccountId,
-                    targetAccountId = targetAccountId,
-                    categoryId = categoryId,
-                    note = note
+            try {
+                DatabaseInitializer.ensureInitialized(db)
+                repository.insertTransaction(
+                    TransactionEntity(
+                        type = type,
+                        amount = amount,
+                        dateMillis = dateMillis,
+                        sourceAccountId = sourceAccountId,
+                        targetAccountId = targetAccountId,
+                        categoryId = categoryId,
+                        note = note
+                    )
                 )
-            )
-            _uiMessage.value = "新增交易成功"
+                kotlinx.coroutines.withContext(Dispatchers.Main) {
+                    _uiMessage.value = "新增交易成功"
+                    onSuccess()
+                }
+            } catch (e: Exception) {
+                kotlinx.coroutines.withContext(Dispatchers.Main) {
+                    onError(e.message ?: "儲存失敗")
+                }
+            }
         }
     }
 

@@ -49,6 +49,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -266,9 +267,23 @@ fun AddTransactionDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
     }
 
     val typeCategories = categories.filter { it.type == currentType }
-    var selectedCategory by remember(currentType) { mutableStateOf(typeCategories.firstOrNull()) }
-    var selectedSourceAccount by remember { mutableStateOf(accounts.firstOrNull()) }
-    var selectedTargetAccount by remember { mutableStateOf(accounts.getOrNull(1) ?: accounts.firstOrNull()) }
+    var selectedCategory by remember { mutableStateOf(typeCategories.firstOrNull()) }
+    var selectedSourceAccount by remember { mutableStateOf<com.moneytracker.app.data.entity.AccountEntity?>(null) }
+    var selectedTargetAccount by remember { mutableStateOf<com.moneytracker.app.data.entity.AccountEntity?>(null) }
+
+    LaunchedEffect(currentType, typeCategories) {
+        if (selectedCategory == null || !typeCategories.contains(selectedCategory)) {
+            selectedCategory = typeCategories.firstOrNull()
+        }
+    }
+
+    LaunchedEffect(accounts) {
+        if (selectedSourceAccount == null) selectedSourceAccount = accounts.firstOrNull()
+        if (selectedTargetAccount == null) {
+            val target = accounts.firstOrNull { it.id != selectedSourceAccount?.id } ?: accounts.firstOrNull()
+            selectedTargetAccount = target
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -333,37 +348,92 @@ fun AddTransactionDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
 
                 // 帳戶選擇
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    var expandedSource by remember { mutableStateOf(false) }
                     Text("來源帳戶：", modifier = Modifier.align(Alignment.CenterVertically))
                     ExposedDropdownMenuBox(
-                        expanded = false,
-                        onExpandedChange = {}
+                        expanded = expandedSource,
+                        onExpandedChange = { expandedSource = it }
                     ) {
                         Text(
                             text = selectedSourceAccount?.name ?: "選擇帳戶",
-                            modifier = Modifier.padding(8.dp),
+                            modifier = Modifier.padding(8.dp).menuAnchor(),
                             fontWeight = FontWeight.Bold
                         )
+                        ExposedDropdownMenu(
+                            expanded = expandedSource,
+                            onDismissRequest = { expandedSource = false }
+                        ) {
+                            accounts.forEach { acc ->
+                                DropdownMenuItem(
+                                    text = { Text(acc.name) },
+                                    onClick = {
+                                        selectedSourceAccount = acc
+                                        expandedSource = false
+                                    }
+                                )
+                            }
+                        }
                     }
                 }
 
                 if (currentType == TransactionType.TRANSFER) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        var expandedTarget by remember { mutableStateOf(false) }
                         Text("轉入帳戶：", modifier = Modifier.align(Alignment.CenterVertically))
-                        Text(
-                            text = selectedTargetAccount?.name ?: "選擇帳戶",
-                            modifier = Modifier.padding(8.dp),
-                            fontWeight = FontWeight.Bold
-                        )
+                        ExposedDropdownMenuBox(
+                            expanded = expandedTarget,
+                            onExpandedChange = { expandedTarget = it }
+                        ) {
+                            Text(
+                                text = selectedTargetAccount?.name ?: "選擇帳戶",
+                                modifier = Modifier.padding(8.dp).menuAnchor(),
+                                fontWeight = FontWeight.Bold
+                            )
+                            ExposedDropdownMenu(
+                                expanded = expandedTarget,
+                                onDismissRequest = { expandedTarget = false }
+                            ) {
+                                accounts.forEach { acc ->
+                                    DropdownMenuItem(
+                                        text = { Text(acc.name) },
+                                        onClick = {
+                                            selectedTargetAccount = acc
+                                            expandedTarget = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
                     }
                 } else {
                     // 分類選擇
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        var expandedCat by remember { mutableStateOf(false) }
                         Text("分類：", modifier = Modifier.align(Alignment.CenterVertically))
-                        Text(
-                            text = selectedCategory?.name ?: "選擇分類",
-                            modifier = Modifier.padding(8.dp),
-                            fontWeight = FontWeight.Bold
-                        )
+                        ExposedDropdownMenuBox(
+                            expanded = expandedCat,
+                            onExpandedChange = { expandedCat = it }
+                        ) {
+                            Text(
+                                text = selectedCategory?.name ?: "選擇分類",
+                                modifier = Modifier.padding(8.dp).menuAnchor(),
+                                fontWeight = FontWeight.Bold
+                            )
+                            ExposedDropdownMenu(
+                                expanded = expandedCat,
+                                onDismissRequest = { expandedCat = false }
+                            ) {
+                                typeCategories.forEach { cat ->
+                                    DropdownMenuItem(
+                                        text = { Text(cat.name) },
+                                        onClick = {
+                                            selectedCategory = cat
+                                            expandedCat = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -376,25 +446,51 @@ fun AddTransactionDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
             }
         },
         confirmButton = {
-            Button(
-                onClick = {
-                    val amount = amountText.toLongOrNull() ?: 0L
-                    val sourceAcc = selectedSourceAccount
-                    if (amount > 0 && sourceAcc != null) {
-                        viewModel.addTransaction(
-                            type = currentType,
-                            amount = amount,
-                            dateMillis = System.currentTimeMillis(),
-                            sourceAccountId = sourceAcc.id,
-                            targetAccountId = if (currentType == TransactionType.TRANSFER) selectedTargetAccount?.id else null,
-                            categoryId = if (currentType != TransactionType.TRANSFER) selectedCategory?.id else null,
-                            note = note
-                        )
-                        onDismiss()
-                    }
+            var errorMessage by remember { mutableStateOf<String?>(null) }
+            var isSaving by remember { mutableStateOf(false) }
+            Column {
+                if (errorMessage != null) {
+                    Text(errorMessage!!, color = Color.Red, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp))
                 }
-            ) {
-                Text("儲存")
+                Button(
+                    enabled = !isSaving,
+                    onClick = {
+                        val amount = amountText.toLongOrNull() ?: 0L
+                        val sourceAcc = selectedSourceAccount
+                        val targetAcc = selectedTargetAccount
+                        if (amount <= 0) {
+                            errorMessage = "金額必須大於 0"
+                        } else if (sourceAcc == null) {
+                            errorMessage = "請選擇來源帳戶"
+                        } else if (currentType == TransactionType.TRANSFER && targetAcc == null) {
+                            errorMessage = "請選擇轉入帳戶"
+                        } else if (currentType == TransactionType.TRANSFER && sourceAcc.id == targetAcc?.id) {
+                            errorMessage = "來源帳戶與轉入帳戶不能相同"
+                        } else {
+                            errorMessage = null
+                            isSaving = true
+                            viewModel.addTransaction(
+                                type = currentType,
+                                amount = amount,
+                                dateMillis = System.currentTimeMillis(),
+                                sourceAccountId = sourceAcc.id,
+                                targetAccountId = if (currentType == TransactionType.TRANSFER) targetAcc?.id else null,
+                                categoryId = if (currentType != TransactionType.TRANSFER) selectedCategory?.id else null,
+                                note = note,
+                                onSuccess = {
+                                    isSaving = false
+                                    onDismiss()
+                                },
+                                onError = { err ->
+                                    isSaving = false
+                                    errorMessage = err
+                                }
+                            )
+                        }
+                    }
+                ) {
+                    Text(if (isSaving) "儲存中..." else "儲存")
+                }
             }
         },
         dismissButton = {

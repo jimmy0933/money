@@ -623,6 +623,7 @@ fun AddLoanDialog(viewModel: MainViewModel, contactSummaries: List<ContactSummar
     var selectedTypeIndex by remember { mutableStateOf(0) } // 0: 借出, 1: 借入
     var amountText by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
 
     val accounts by viewModel.accounts.collectAsState()
     var selectedAccount by remember { mutableStateOf(accounts.firstOrNull()) }
@@ -821,37 +822,44 @@ fun AddLoanDialog(viewModel: MainViewModel, contactSummaries: List<ContactSummar
         confirmButton = {
             val isLoading = viewModel.isLoading.collectAsState()
             var isSaving by remember { mutableStateOf(false) }
-            var errorMessage by remember { mutableStateOf<String?>(null) }
-            Button(
-                enabled = !isLoading.value && !isSaving,
-                onClick = {
-                    val amount = amountText.toLongOrNull() ?: 0L
-                    val acc = selectedAccount
-                    val existingMatch = contactSummaries.find { c -> c.contact.name == contactName.trim() }?.contact
-                    if (existingMatch != null) {
-                        /* selectedContactId is not accessible here, nor do we need to set it during adding a loan */
-                    }
-
-                    if (contactName.isNotBlank() && amount > 0 && acc != null) {
-                        isSaving = true
-                        viewModel.addLoan(
-                            contactName = contactName.trim(),
-                            type = if (selectedTypeIndex == 0) LoanType.LEND else LoanType.BORROW,
-                            amount = amount,
-                            dateMillis = dateMillis,
-                            dueDateMillis = dueDateMillis,
-                            accountId = acc.id,
-                            note = note,
-                            onSuccess = onDismiss,
-                            onError = { err ->
-                                isSaving = false
-                                errorMessage = err
-                            }
-                        )
-                    }
+            Column {
+                if (errorMessage != null) {
+                    Text(errorMessage!!, color = Color.Red, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp))
                 }
-            ) {
-                Text(if (isSaving) "儲存中..." else "儲存")
+                Button(
+                    enabled = !isLoading.value && !isSaving,
+                    onClick = {
+                        val amount = amountText.toLongOrNull() ?: 0L
+                        val acc = selectedAccount
+
+                        if (contactName.trim().isBlank()) {
+                            errorMessage = "姓名不能為空"
+                        } else if (amount <= 0) {
+                            errorMessage = "金額必須大於 0"
+                        } else if (acc == null) {
+                            errorMessage = "請選擇帳戶"
+                        } else {
+                            errorMessage = null
+                            isSaving = true
+                            viewModel.addLoan(
+                                contactName = contactName.trim(),
+                                type = if (selectedTypeIndex == 0) LoanType.LEND else LoanType.BORROW,
+                                amount = amount,
+                                dateMillis = dateMillis,
+                                dueDateMillis = dueDateMillis,
+                                accountId = acc.id,
+                                note = note,
+                                onSuccess = onDismiss,
+                                onError = { err ->
+                                    isSaving = false
+                                    errorMessage = err
+                                }
+                            )
+                        }
+                    }
+                ) {
+                    Text(if (isSaving) "儲存中..." else "儲存")
+                }
             }
         },
         dismissButton = {
@@ -914,9 +922,7 @@ fun AddRepaymentDialog(
                     isError = errorMessage != null
                 )
 
-                if (errorMessage != null) {
-                    Text(errorMessage!!, color = Color.Red, fontSize = 12.sp)
-                }
+// Removed inner errorMessage text as it is now at the button level
 
                 var expanded by remember { mutableStateOf(false) }
                 ExposedDropdownMenuBox(
@@ -973,32 +979,41 @@ fun AddRepaymentDialog(
         confirmButton = {
             val isLoading = viewModel.isLoading.collectAsState()
             var isSaving by remember { mutableStateOf(false) }
-            var errorMessage by remember { mutableStateOf<String?>(null) }
-            Button(
-                enabled = !isLoading.value && !isSaving,
-                onClick = {
-                    val amount = amountText.toLongOrNull() ?: 0L
-                    val acc = selectedAccount
-                    if (amount > loanWithDetails.remainingAmount) {
-                        errorMessage = "還款金額不能超過剩餘欠款 (NT$ ${loanWithDetails.remainingAmount})"
-                    } else if (amount > 0 && acc != null) {
-                        isSaving = true
-                        viewModel.addLoanRepayment(
-                            loanId = loanWithDetails.loan.id,
-                            amount = amount,
-                            dateMillis = dateMillis,
-                            accountId = acc.id,
-                            note = note,
-                            onSuccess = onDismiss,
-                            onError = { err ->
-                                isSaving = false
-                                errorMessage = err
-                            }
-                        )
-                    }
+            Column {
+                if (errorMessage != null) {
+                    Text(errorMessage!!, color = Color.Red, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp))
                 }
-            ) {
-                Text(if (isSaving) "儲存中..." else "確認還款")
+                Button(
+                    enabled = !isLoading.value && !isSaving,
+                    onClick = {
+                        val amount = amountText.toLongOrNull() ?: 0L
+                        val acc = selectedAccount
+                        if (amount <= 0) {
+                            errorMessage = "還款金額必須大於 0"
+                        } else if (acc == null) {
+                            errorMessage = "請選擇帳戶"
+                        } else if (amount > loanWithDetails.remainingAmount) {
+                            errorMessage = "還款金額不能超過剩餘欠款 (NT$ ${loanWithDetails.remainingAmount})"
+                        } else {
+                            errorMessage = null
+                            isSaving = true
+                            viewModel.addLoanRepayment(
+                                loanId = loanWithDetails.loan.id,
+                                amount = amount,
+                                dateMillis = dateMillis,
+                                accountId = acc.id,
+                                note = note,
+                                onSuccess = onDismiss,
+                                onError = { err ->
+                                    isSaving = false
+                                    errorMessage = err
+                                }
+                            )
+                        }
+                    }
+                ) {
+                    Text(if (isSaving) "儲存中..." else "確認還款")
+                }
             }
         },
         dismissButton = {
@@ -1033,9 +1048,7 @@ fun ContactManagementDialog(
                     singleLine = true,
                     isError = errorMessage != null
                 )
-                if (errorMessage != null) {
-                    Text(errorMessage!!, color = Color.Red, fontSize = 12.sp)
-                }
+// Removed inner errorMessage text as it is now at the button level
 
                 OutlinedTextField(
                     value = phone,
@@ -1055,35 +1068,40 @@ fun ContactManagementDialog(
         },
         confirmButton = {
             var isSaving by remember { mutableStateOf(false) }
-            var errorMessage by remember { mutableStateOf<String?>(null) }
-            Button(
-                enabled = !isSaving,
-                onClick = {
-                    if (name.trim().isBlank()) {
-                        errorMessage = "姓名不能為空"
-                    } else {
-                        isSaving = true
-                        if (contact == null || contact.id == 0L) {
-                            viewModel.addContact(name.trim(), phone.trim(), note.trim(), onSuccess = { id ->
-                                onSaveSuccess?.invoke(id)
-                                onDismiss()
-                            }, onError = { err ->
-                                isSaving = false
-                                errorMessage = err
-                            })
+            Column {
+                if (errorMessage != null) {
+                    Text(errorMessage!!, color = Color.Red, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp))
+                }
+                Button(
+                    enabled = !isSaving,
+                    onClick = {
+                        if (name.trim().isBlank()) {
+                            errorMessage = "姓名不能為空"
                         } else {
-                            viewModel.updateContact(contact.copy(name = name.trim(), phone = phone.trim(), note = note.trim()), onSuccess = {
-                                onSaveSuccess?.invoke(contact.id)
-                                onDismiss()
-                            }, onError = { err ->
-                                isSaving = false
-                                errorMessage = err
-                            })
+                            errorMessage = null
+                            isSaving = true
+                            if (contact == null || contact.id == 0L) {
+                                viewModel.addContact(name.trim(), phone.trim(), note.trim(), onSuccess = { id ->
+                                    onSaveSuccess?.invoke(id)
+                                    onDismiss()
+                                }, onError = { err ->
+                                    isSaving = false
+                                    errorMessage = err
+                                })
+                            } else {
+                                viewModel.updateContact(contact.copy(name = name.trim(), phone = phone.trim(), note = note.trim()), onSuccess = {
+                                    onSaveSuccess?.invoke(contact.id)
+                                    onDismiss()
+                                }, onError = { err ->
+                                    isSaving = false
+                                    errorMessage = err
+                                })
+                            }
                         }
                     }
+                ) {
+                    Text(if (isSaving) "儲存中..." else "儲存")
                 }
-            ) {
-                Text(if (isSaving) "儲存中..." else "儲存")
             }
         },
         dismissButton = {
