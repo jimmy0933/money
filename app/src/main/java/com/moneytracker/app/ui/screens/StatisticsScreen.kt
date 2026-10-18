@@ -175,6 +175,8 @@ fun StatisticsScreen(viewModel: MainViewModel) {
                         Spacer(modifier = Modifier.height(16.dp))
 
                         val maxVal = maxOf(totalIncome, totalExpense, 1L)
+                        val primaryColor = MaterialTheme.colorScheme.primary
+                        val errorColor = MaterialTheme.colorScheme.error
 
                         Row(
                             modifier = Modifier
@@ -193,7 +195,7 @@ fun StatisticsScreen(viewModel: MainViewModel) {
                                         .padding(bottom = 8.dp)
                                 ) {
                                     Canvas(modifier = Modifier.fillMaxSize()) {
-                                        drawRect(color = MaterialTheme.colorScheme.primary)
+                                        drawRect(color = primaryColor)
                                     }
                                 }
                                 Text("收入", fontSize = 12.sp)
@@ -210,7 +212,7 @@ fun StatisticsScreen(viewModel: MainViewModel) {
                                         .padding(bottom = 8.dp)
                                 ) {
                                     Canvas(modifier = Modifier.fillMaxSize()) {
-                                        drawRect(color = MaterialTheme.colorScheme.error)
+                                        drawRect(color = errorColor)
                                     }
                                 }
                                 Text("支出", fontSize = 12.sp)
