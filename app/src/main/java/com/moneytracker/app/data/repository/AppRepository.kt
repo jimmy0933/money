@@ -142,12 +142,16 @@ class AppRepository(private val db: AppDatabase) {
     suspend fun getOrCreateContact(name: String, phone: String = ""): ContactEntity {
         return DataOperationCoordinator.runWriteOperation {
             db.withTransaction {
-                val existing = contactDao.getContactByName(name.trim())
-                if (existing != null) return@withTransaction existing
-                val id = contactDao.insertContact(ContactEntity(name = name.trim(), phone = phone.trim()))
-                contactDao.getContactById(id)!!
+                getOrCreateContactInternal(name, phone)
             }
         }
+    }
+
+    private suspend fun getOrCreateContactInternal(name: String, phone: String = ""): ContactEntity {
+        val existing = contactDao.getContactByName(name.trim())
+        if (existing != null) return existing
+        val id = contactDao.insertContact(ContactEntity(name = name.trim(), phone = phone.trim()))
+        return contactDao.getContactById(id)!!
     }
 
     fun getContactSummariesFlow(): Flow<List<ContactSummary>> {
@@ -247,9 +251,9 @@ class AppRepository(private val db: AppDatabase) {
         return DataOperationCoordinator.runWriteOperation {
             db.withTransaction {
                 val contact = if (contactId != null) {
-                    contactDao.getContactById(contactId) ?: getOrCreateContact(contactName)
+                    contactDao.getContactById(contactId) ?: getOrCreateContactInternal(contactName)
                 } else {
-                    getOrCreateContact(contactName)
+                    getOrCreateContactInternal(contactName)
                 }
 
                 val loan = LoanEntity(
