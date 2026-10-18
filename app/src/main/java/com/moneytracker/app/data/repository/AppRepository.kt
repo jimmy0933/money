@@ -93,8 +93,36 @@ class AppRepository(private val db: AppDatabase) {
     // Transactions
     // -------------------------------------------------------------
     fun getAllTransactionsFlow(): Flow<List<TransactionEntity>> = transactionDao.getAllTransactionsFlow()
-    suspend fun insertTransaction(transaction: TransactionEntity): Long = DataOperationCoordinator.runWriteOperation { transactionDao.insertTransaction(transaction) }
-    suspend fun updateTransaction(transaction: TransactionEntity) = DataOperationCoordinator.runWriteOperation { transactionDao.updateTransaction(transaction) }
+        private suspend fun validateTransaction(transaction: TransactionEntity) {
+        if (transaction.amount <= 0) {
+            throw IllegalArgumentException("交易金額必須大於零")
+        }
+        val sourceAccount = accountDao.getAccountById(transaction.sourceAccountId)
+        if (sourceAccount == null || sourceAccount.isDeleted) {
+            throw IllegalArgumentException("無效的來源帳戶")
+        }
+        if (transaction.type == TransactionType.TRANSFER) {
+            if (transaction.targetAccountId == null) {
+                throw IllegalArgumentException("轉帳必須指定目標帳戶")
+            }
+            if (transaction.sourceAccountId == transaction.targetAccountId) {
+                throw IllegalArgumentException("轉出與轉入帳戶不能相同")
+            }
+            val targetAccount = accountDao.getAccountById(transaction.targetAccountId)
+            if (targetAccount == null || targetAccount.isDeleted) {
+                throw IllegalArgumentException("無效的目標帳戶")
+            }
+        }
+    }
+
+    suspend fun insertTransaction(transaction: TransactionEntity): Long = DataOperationCoordinator.runWriteOperation {
+        validateTransaction(transaction)
+        transactionDao.insertTransaction(transaction)
+    }
+    suspend fun updateTransaction(transaction: TransactionEntity) = DataOperationCoordinator.runWriteOperation {
+        validateTransaction(transaction)
+        transactionDao.updateTransaction(transaction)
+    }
     suspend fun softDeleteTransaction(id: Long) = DataOperationCoordinator.runWriteOperation {
         val tx = transactionDao.getTransactionById(id)
         if (tx != null && (tx.loanId != null || tx.repaymentId != null)) {
