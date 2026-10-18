@@ -13,6 +13,9 @@ interface LoanRepaymentDao {
     @Query("SELECT * FROM loan_repayments WHERE loanId = :loanId AND isDeleted = 0 ORDER BY dateMillis ASC, id ASC")
     fun getRepaymentsByLoanIdFlow(loanId: Long): Flow<List<LoanRepaymentEntity>>
 
+    @Query("SELECT * FROM loan_repayments WHERE isDeleted = 0")
+    fun getAllRepaymentsFlow(): Flow<List<LoanRepaymentEntity>>
+
     @Query("SELECT * FROM loan_repayments WHERE loanId = :loanId AND isDeleted = 0 ORDER BY dateMillis ASC, id ASC")
     suspend fun getRepaymentsByLoanId(loanId: Long): List<LoanRepaymentEntity>
 
@@ -25,8 +28,14 @@ interface LoanRepaymentDao {
     @Query("SELECT * FROM loan_repayments WHERE id = :id AND isDeleted = 0")
     suspend fun getRepaymentById(id: Long): LoanRepaymentEntity?
 
+    @Query("SELECT * FROM loan_repayments WHERE id = :id")
+    suspend fun getRepaymentByIdWithDeleted(id: Long): LoanRepaymentEntity?
+
     @Query("SELECT COALESCE(SUM(amount), 0) FROM loan_repayments WHERE loanId = :loanId AND isDeleted = 0")
     suspend fun getTotalRepaidForLoan(loanId: Long): Long
+
+    @Query("SELECT COALESCE(SUM(amount), 0) FROM loan_repayments WHERE loanId = :loanId")
+    suspend fun getTotalRepaidForLoanWithDeleted(loanId: Long): Long
 
     @Query("SELECT COALESCE(SUM(amount), 0) FROM loan_repayments WHERE loanId = :loanId AND isDeleted = 0")
     fun getTotalRepaidForLoanFlow(loanId: Long): Flow<Long>

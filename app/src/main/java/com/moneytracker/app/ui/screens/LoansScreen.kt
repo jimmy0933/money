@@ -821,6 +821,7 @@ fun AddLoanDialog(viewModel: MainViewModel, contactSummaries: List<ContactSummar
         confirmButton = {
             val isLoading = viewModel.isLoading.collectAsState()
             var isSaving by remember { mutableStateOf(false) }
+            var errorMessage by remember { mutableStateOf<String?>(null) }
             Button(
                 enabled = !isLoading.value && !isSaving,
                 onClick = {
@@ -841,7 +842,11 @@ fun AddLoanDialog(viewModel: MainViewModel, contactSummaries: List<ContactSummar
                             dueDateMillis = dueDateMillis,
                             accountId = acc.id,
                             note = note,
-                            onSuccess = onDismiss
+                            onSuccess = onDismiss,
+                            onError = { err ->
+                                isSaving = false
+                                errorMessage = err
+                            }
                         )
                     }
                 }
@@ -968,6 +973,7 @@ fun AddRepaymentDialog(
         confirmButton = {
             val isLoading = viewModel.isLoading.collectAsState()
             var isSaving by remember { mutableStateOf(false) }
+            var errorMessage by remember { mutableStateOf<String?>(null) }
             Button(
                 enabled = !isLoading.value && !isSaving,
                 onClick = {
@@ -983,7 +989,11 @@ fun AddRepaymentDialog(
                             dateMillis = dateMillis,
                             accountId = acc.id,
                             note = note,
-                            onSuccess = onDismiss
+                            onSuccess = onDismiss,
+                            onError = { err ->
+                                isSaving = false
+                                errorMessage = err
+                            }
                         )
                     }
                 }
@@ -1045,6 +1055,7 @@ fun ContactManagementDialog(
         },
         confirmButton = {
             var isSaving by remember { mutableStateOf(false) }
+            var errorMessage by remember { mutableStateOf<String?>(null) }
             Button(
                 enabled = !isSaving,
                 onClick = {
@@ -1053,15 +1064,21 @@ fun ContactManagementDialog(
                     } else {
                         isSaving = true
                         if (contact == null || contact.id == 0L) {
-                            viewModel.addContact(name.trim(), phone.trim(), note.trim()) { id ->
+                            viewModel.addContact(name.trim(), phone.trim(), note.trim(), onSuccess = { id ->
                                 onSaveSuccess?.invoke(id)
                                 onDismiss()
-                            }
+                            }, onError = { err ->
+                                isSaving = false
+                                errorMessage = err
+                            })
                         } else {
-                            viewModel.updateContact(contact.copy(name = name.trim(), phone = phone.trim(), note = note.trim())) {
+                            viewModel.updateContact(contact.copy(name = name.trim(), phone = phone.trim(), note = note.trim()), onSuccess = {
                                 onSaveSuccess?.invoke(contact.id)
                                 onDismiss()
-                            }
+                            }, onError = { err ->
+                                isSaving = false
+                                errorMessage = err
+                            })
                         }
                     }
                 }

@@ -32,6 +32,9 @@ interface LoanDao {
     @Query("SELECT * FROM loans WHERE id = :id AND isDeleted = 0")
     suspend fun getLoanById(id: Long): LoanEntity?
 
+    @Query("SELECT * FROM loans WHERE id = :id")
+    suspend fun getLoanByIdWithDeleted(id: Long): LoanEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertLoan(loan: LoanEntity): Long
 

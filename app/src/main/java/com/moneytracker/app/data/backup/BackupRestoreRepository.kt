@@ -121,21 +121,21 @@ class BackupRestoreRepository(
                     // --- 交易內完整性與業務欄位核對 ---
 
                     // A. 帳戶表核對 (筆數、ID、名稱、類型、初始餘額、刪除標記、帳戶餘額可計算)
-                    val dbAccounts = db.accountDao().getAllAccounts()
+                    val dbAccounts = db.accountDao().getAllAccountsWithDeleted()
                     if (dbAccounts.size != payload.accounts.size) {
                         throw IllegalStateException("還原後帳戶筆數與備份不符 (預期: ${payload.accounts.size}, 實際: ${dbAccounts.size})")
                     }
                     for (expected in payload.accounts) {
-                        val actual = db.accountDao().getAccountById(expected.id)
+                        val actual = db.accountDao().getAccountByIdWithDeleted(expected.id)
                             ?: throw IllegalStateException("還原後找不到帳戶 ID ${expected.id}")
                         if (actual.name != expected.name || actual.type != expected.type ||
                             actual.initialBalance != expected.initialBalance || actual.isDeleted != expected.isDeleted) {
                             throw IllegalStateException("還原後帳戶欄位與備份不符 (ID: ${expected.id})")
                         }
-                        val income = db.transactionDao().getTotalIncomeForAccount(expected.id)
-                        val expense = db.transactionDao().getTotalExpenseForAccount(expected.id)
-                        val transferOut = db.transactionDao().getTotalTransferOutForAccount(expected.id)
-                        val transferIn = db.transactionDao().getTotalTransferInForAccount(expected.id)
+                        val income = if (expected.isDeleted) db.transactionDao().getTotalIncomeForAccountWithDeleted(expected.id) else db.transactionDao().getTotalIncomeForAccount(expected.id)
+                        val expense = if (expected.isDeleted) db.transactionDao().getTotalExpenseForAccountWithDeleted(expected.id) else db.transactionDao().getTotalExpenseForAccount(expected.id)
+                        val transferOut = if (expected.isDeleted) db.transactionDao().getTotalTransferOutForAccountWithDeleted(expected.id) else db.transactionDao().getTotalTransferOutForAccount(expected.id)
+                        val transferIn = if (expected.isDeleted) db.transactionDao().getTotalTransferInForAccountWithDeleted(expected.id) else db.transactionDao().getTotalTransferInForAccount(expected.id)
                         val currentBal = expected.initialBalance + income - expense - transferOut + transferIn
                         if (currentBal.toString().isEmpty()) {
                             throw IllegalStateException("帳戶餘額計算異常 (ID: ${expected.id})")
@@ -143,12 +143,12 @@ class BackupRestoreRepository(
                     }
 
                     // B. 收支分類表核對 (筆數、ID、名稱、類型、圖示、預設/刪除標記)
-                    val dbCategories = db.categoryDao().getAllCategories()
+                    val dbCategories = db.categoryDao().getAllCategoriesWithDeleted()
                     if (dbCategories.size != payload.categories.size) {
                         throw IllegalStateException("還原後分類筆數與備份不符 (預期: ${payload.categories.size}, 實際: ${dbCategories.size})")
                     }
                     for (expected in payload.categories) {
-                        val actual = db.categoryDao().getCategoryById(expected.id)
+                        val actual = db.categoryDao().getCategoryByIdWithDeleted(expected.id)
                             ?: throw IllegalStateException("還原後找不到分類 ID ${expected.id}")
                         if (actual.name != expected.name || actual.type != expected.type ||
                             actual.iconName != expected.iconName || actual.isDefault != expected.isDefault ||
@@ -158,12 +158,12 @@ class BackupRestoreRepository(
                     }
 
                     // C. 聯絡人表核對 (筆數、ID、姓名、電話、備註、刪除標記)
-                    val dbContacts = db.contactDao().getAllContacts()
+                    val dbContacts = db.contactDao().getAllContactsWithDeleted()
                     if (dbContacts.size != payload.contacts.size) {
                         throw IllegalStateException("還原後聯絡人筆數與備份不符 (預期: ${payload.contacts.size}, 實際: ${dbContacts.size})")
                     }
                     for (expected in payload.contacts) {
-                        val actual = db.contactDao().getContactById(expected.id)
+                        val actual = db.contactDao().getContactByIdWithDeleted(expected.id)
                             ?: throw IllegalStateException("還原後找不到聯絡人 ID ${expected.id}")
                         if (actual.name != expected.name || actual.phone != expected.phone ||
                             actual.note != expected.note || actual.isDeleted != expected.isDeleted) {
@@ -172,12 +172,12 @@ class BackupRestoreRepository(
                     }
 
                     // D. 借貸紀錄表核對 (筆數、ID、關聯聯絡人、類型、金額、日期、到期日、關聯帳戶、狀態、備註、刪除標記)
-                    val dbLoans = db.loanDao().getAllLoans()
+                    val dbLoans = db.loanDao().getAllLoansWithDeleted()
                     if (dbLoans.size != payload.loans.size) {
                         throw IllegalStateException("還原後借貸紀錄筆數與備份不符 (預期: ${payload.loans.size}, 實際: ${dbLoans.size})")
                     }
                     for (expected in payload.loans) {
-                        val actual = db.loanDao().getLoanById(expected.id)
+                        val actual = db.loanDao().getLoanByIdWithDeleted(expected.id)
                             ?: throw IllegalStateException("還原後找不到借貸 ID ${expected.id}")
                         if (actual.contactId != expected.contactId || actual.type != expected.type ||
                             actual.amount != expected.amount || actual.dateMillis != expected.dateMillis ||
@@ -186,15 +186,15 @@ class BackupRestoreRepository(
                             actual.isDeleted != expected.isDeleted) {
                             throw IllegalStateException("還原後借貸紀錄欄位與備份不符 (ID: ${expected.id})")
                         }
-                        if (db.contactDao().getContactById(expected.contactId) == null) {
+                        if (db.contactDao().getContactByIdWithDeleted(expected.contactId) == null) {
                             throw IllegalStateException("還原後借貸之聯絡人 ID ${expected.contactId} 不存在")
                         }
-                        if (db.accountDao().getAccountById(expected.accountId) == null) {
+                        if (db.accountDao().getAccountByIdWithDeleted(expected.accountId) == null) {
                             throw IllegalStateException("還原後借貸之帳戶 ID ${expected.accountId} 不存在")
                         }
 
                         // 驗證借貸狀態與還款加總一致性
-                        val totalRepaid = db.loanRepaymentDao().getTotalRepaidForLoan(expected.id)
+                        val totalRepaid = if (expected.isDeleted) db.loanRepaymentDao().getTotalRepaidForLoanWithDeleted(expected.id) else db.loanRepaymentDao().getTotalRepaidForLoan(expected.id)
                         val calculatedStatus = when {
                             totalRepaid >= expected.amount -> LoanStatus.PAID
                             totalRepaid > 0 -> LoanStatus.PARTIAL
@@ -206,33 +206,33 @@ class BackupRestoreRepository(
                     }
 
                     // E. 還款紀錄表核對 (筆數、ID、關聯借貸、金額、日期、關聯帳戶、備註、刪除標記)
-                    val dbRepayments = db.loanRepaymentDao().getAllRepayments()
+                    val dbRepayments = db.loanRepaymentDao().getAllRepaymentsWithDeleted()
                     if (dbRepayments.size != payload.loanRepayments.size) {
                         throw IllegalStateException("還原後還款紀錄筆數與備份不符 (預期: ${payload.loanRepayments.size}, 實際: ${dbRepayments.size})")
                     }
                     for (expected in payload.loanRepayments) {
-                        val actual = db.loanRepaymentDao().getRepaymentById(expected.id)
+                        val actual = db.loanRepaymentDao().getRepaymentByIdWithDeleted(expected.id)
                             ?: throw IllegalStateException("還原後找不到還款 ID ${expected.id}")
                         if (actual.loanId != expected.loanId || actual.amount != expected.amount ||
                             actual.dateMillis != expected.dateMillis || actual.accountId != expected.accountId ||
                             actual.note != expected.note || actual.isDeleted != expected.isDeleted) {
                             throw IllegalStateException("還原後還款紀錄欄位與備份不符 (ID: ${expected.id})")
                         }
-                        if (db.loanDao().getLoanById(expected.loanId) == null) {
+                        if (db.loanDao().getLoanByIdWithDeleted(expected.loanId) == null) {
                             throw IllegalStateException("還原後還款之借貸 ID ${expected.loanId} 不存在")
                         }
-                        if (db.accountDao().getAccountById(expected.accountId) == null) {
+                        if (db.accountDao().getAccountByIdWithDeleted(expected.accountId) == null) {
                             throw IllegalStateException("還原後還款之帳戶 ID ${expected.accountId} 不存在")
                         }
                     }
 
                     // F. 交易紀錄表核對 (筆數、ID、類型、金額、日期、關聯分類、來源帳戶、目標帳戶、關聯借貸、關聯還款、刪除標記)
-                    val dbTransactions = db.transactionDao().getAllTransactions()
+                    val dbTransactions = db.transactionDao().getAllTransactionsWithDeleted()
                     if (dbTransactions.size != payload.transactions.size) {
                         throw IllegalStateException("還原後交易紀錄筆數與備份不符 (預期: ${payload.transactions.size}, 實際: ${dbTransactions.size})")
                     }
                     for (expected in payload.transactions) {
-                        val actual = db.transactionDao().getTransactionById(expected.id)
+                        val actual = db.transactionDao().getTransactionByIdWithDeleted(expected.id)
                             ?: throw IllegalStateException("還原後找不到交易 ID ${expected.id}")
                         if (actual.type != expected.type || actual.amount != expected.amount ||
                             actual.dateMillis != expected.dateMillis || actual.categoryId != expected.categoryId ||
@@ -241,19 +241,19 @@ class BackupRestoreRepository(
                             actual.repaymentId != expected.repaymentId || actual.isDeleted != expected.isDeleted) {
                             throw IllegalStateException("還原後交易紀錄欄位與備份不符 (ID: ${expected.id})")
                         }
-                        if (db.accountDao().getAccountById(expected.sourceAccountId) == null) {
+                        if (db.accountDao().getAccountByIdWithDeleted(expected.sourceAccountId) == null) {
                             throw IllegalStateException("還原後交易之來源帳戶 ID ${expected.sourceAccountId} 不存在")
                         }
-                        if (expected.targetAccountId != null && db.accountDao().getAccountById(expected.targetAccountId) == null) {
+                        if (expected.targetAccountId != null && db.accountDao().getAccountByIdWithDeleted(expected.targetAccountId) == null) {
                             throw IllegalStateException("還原後交易之目標帳戶 ID ${expected.targetAccountId} 不存在")
                         }
-                        if (expected.categoryId != null && db.categoryDao().getCategoryById(expected.categoryId) == null) {
+                        if (expected.categoryId != null && db.categoryDao().getCategoryByIdWithDeleted(expected.categoryId) == null) {
                             throw IllegalStateException("還原後交易之分類 ID ${expected.categoryId} 不存在")
                         }
-                        if (expected.loanId != null && db.loanDao().getLoanById(expected.loanId) == null) {
+                        if (expected.loanId != null && db.loanDao().getLoanByIdWithDeleted(expected.loanId) == null) {
                             throw IllegalStateException("還原後交易之借貸 ID ${expected.loanId} 不存在")
                         }
-                        if (expected.repaymentId != null && db.loanRepaymentDao().getRepaymentById(expected.repaymentId) == null) {
+                        if (expected.repaymentId != null && db.loanRepaymentDao().getRepaymentByIdWithDeleted(expected.repaymentId) == null) {
                             throw IllegalStateException("還原後交易之還款 ID ${expected.repaymentId} 不存在")
                         }
                     }

@@ -22,6 +22,9 @@ interface AccountDao {
     @Query("SELECT * FROM accounts WHERE id = :id AND isDeleted = 0")
     suspend fun getAccountById(id: Long): AccountEntity?
 
+    @Query("SELECT * FROM accounts WHERE id = :id")
+    suspend fun getAccountByIdWithDeleted(id: Long): AccountEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAccount(account: AccountEntity): Long
 
