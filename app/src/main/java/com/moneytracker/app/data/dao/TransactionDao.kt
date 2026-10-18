@@ -41,10 +41,10 @@ interface TransactionDao {
     @Query("UPDATE transactions SET isDeleted = 1, updatedAt = :updatedAt WHERE id = :id")
     suspend fun softDeleteTransaction(id: Long, updatedAt: Long = System.currentTimeMillis())
 
-    @Query("UPDATE transactions SET isDeleted = 1, updatedAt = :updatedAt WHERE loanId = :loanId")
+    @Query("UPDATE transactions SET isDeleted = 1, updatedAt = :updatedAt WHERE loanId = :loanId AND isDeleted = 0")
     suspend fun softDeleteTransactionsByLoanId(loanId: Long, updatedAt: Long = System.currentTimeMillis())
 
-    @Query("UPDATE transactions SET isDeleted = 1, updatedAt = :updatedAt WHERE repaymentId = :repaymentId")
+    @Query("UPDATE transactions SET isDeleted = 1, updatedAt = :updatedAt WHERE repaymentId = :repaymentId AND isDeleted = 0")
     suspend fun softDeleteTransactionsByRepaymentId(repaymentId: Long, updatedAt: Long = System.currentTimeMillis())
 
     // 帳戶進出金流加總 (排除一般收支的非現金流)
