@@ -23,6 +23,9 @@ interface TransactionDao {
     @Query("SELECT * FROM transactions WHERE id = :id AND isDeleted = 0")
     suspend fun getTransactionById(id: Long): TransactionEntity?
 
+    @Query("SELECT * FROM transactions WHERE id = :id")
+    suspend fun getTransactionByIdWithDeleted(id: Long): TransactionEntity?
+
     @Query("SELECT * FROM transactions WHERE loanId = :loanId AND isDeleted = 0")
     suspend fun getTransactionsByLoanId(loanId: Long): List<TransactionEntity>
 
@@ -50,14 +53,26 @@ interface TransactionDao {
     @Query("SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE sourceAccountId = :accountId AND type = 'EXPENSE' AND isDeleted = 0")
     suspend fun getTotalExpenseForAccount(accountId: Long): Long
 
+    @Query("SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE sourceAccountId = :accountId AND type = 'EXPENSE'")
+    suspend fun getTotalExpenseForAccountWithDeleted(accountId: Long): Long
+
     @Query("SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE sourceAccountId = :accountId AND type = 'INCOME' AND isDeleted = 0")
     suspend fun getTotalIncomeForAccount(accountId: Long): Long
+
+    @Query("SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE sourceAccountId = :accountId AND type = 'INCOME'")
+    suspend fun getTotalIncomeForAccountWithDeleted(accountId: Long): Long
 
     @Query("SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE sourceAccountId = :accountId AND type = 'TRANSFER' AND isDeleted = 0")
     suspend fun getTotalTransferOutForAccount(accountId: Long): Long
 
+    @Query("SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE sourceAccountId = :accountId AND type = 'TRANSFER'")
+    suspend fun getTotalTransferOutForAccountWithDeleted(accountId: Long): Long
+
     @Query("SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE targetAccountId = :accountId AND type = 'TRANSFER' AND isDeleted = 0")
     suspend fun getTotalTransferInForAccount(accountId: Long): Long
+
+    @Query("SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE targetAccountId = :accountId AND type = 'TRANSFER'")
+    suspend fun getTotalTransferInForAccountWithDeleted(accountId: Long): Long
 
     // 依日期區間與條件計算真實收支 (排除借貸與轉帳)
     @Query("SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE type = 'INCOME' AND loanId IS NULL AND repaymentId IS NULL AND isDeleted = 0 AND dateMillis BETWEEN :startMillis AND :endMillis")

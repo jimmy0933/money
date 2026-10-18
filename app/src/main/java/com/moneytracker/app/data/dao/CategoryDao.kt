@@ -26,6 +26,9 @@ interface CategoryDao {
     @Query("SELECT * FROM categories WHERE id = :id AND isDeleted = 0")
     suspend fun getCategoryById(id: Long): CategoryEntity?
 
+    @Query("SELECT * FROM categories WHERE id = :id")
+    suspend fun getCategoryByIdWithDeleted(id: Long): CategoryEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCategory(category: CategoryEntity): Long
 

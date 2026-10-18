@@ -329,21 +329,31 @@ class MainViewModel @JvmOverloads constructor(
 
 
 
-    fun addContact(name: String, phone: String, note: String, onSuccess: ((Long) -> Unit)? = null) {
+    fun addContact(name: String, phone: String, note: String, onSuccess: ((Long) -> Unit)? = null, onError: ((String) -> Unit)? = null) {
         viewModelScope.launch(Dispatchers.IO) {
-            DatabaseInitializer.ensureInitialized(db)
-            val id = repository.addContact(name, phone, note)
-            _uiMessage.value = "新增對象成功"
-            onSuccess?.invoke(id)
+            try {
+                DatabaseInitializer.ensureInitialized(db)
+                val id = repository.addContact(name, phone, note)
+                _uiMessage.value = "新增對象成功"
+                kotlinx.coroutines.withContext(Dispatchers.Main) { onSuccess?.invoke(id) }
+            } catch (e: Exception) {
+                _uiMessage.value = "新增對象失敗: ${e.message}"
+                kotlinx.coroutines.withContext(Dispatchers.Main) { onError?.invoke(e.message ?: "新增失敗") }
+            }
         }
     }
 
-    fun updateContact(contact: com.moneytracker.app.data.entity.ContactEntity, onSuccess: (() -> Unit)? = null) {
+    fun updateContact(contact: com.moneytracker.app.data.entity.ContactEntity, onSuccess: (() -> Unit)? = null, onError: ((String) -> Unit)? = null) {
         viewModelScope.launch(Dispatchers.IO) {
-            DatabaseInitializer.ensureInitialized(db)
-            repository.updateContact(contact)
-            _uiMessage.value = "更新對象成功"
-            onSuccess?.invoke()
+            try {
+                DatabaseInitializer.ensureInitialized(db)
+                repository.updateContact(contact)
+                _uiMessage.value = "更新對象成功"
+                kotlinx.coroutines.withContext(Dispatchers.Main) { onSuccess?.invoke() }
+            } catch (e: Exception) {
+                _uiMessage.value = "更新對象失敗: ${e.message}"
+                kotlinx.coroutines.withContext(Dispatchers.Main) { onError?.invoke(e.message ?: "更新失敗") }
+            }
         }
     }
 
@@ -363,7 +373,7 @@ class MainViewModel @JvmOverloads constructor(
         dueDateMillis: Long?,
         accountId: Long,
         note: String,
-        onSuccess: () -> Unit = {}
+        onSuccess: () -> Unit = {}, onError: (String) -> Unit = {}
     ) {
         viewModelScope.launch(Dispatchers.IO) {
             _isLoading.value = true
@@ -382,6 +392,7 @@ class MainViewModel @JvmOverloads constructor(
                 kotlinx.coroutines.withContext(Dispatchers.Main) { onSuccess() }
             } catch (e: Exception) {
                 _uiMessage.value = "新增失敗: ${e.message}"
+                kotlinx.coroutines.withContext(Dispatchers.Main) { onError(e.message ?: "新增失敗") }
             } finally {
                 _isLoading.value = false
             }
@@ -394,7 +405,7 @@ class MainViewModel @JvmOverloads constructor(
         dateMillis: Long,
         accountId: Long,
         note: String,
-        onSuccess: () -> Unit = {}
+        onSuccess: () -> Unit = {}, onError: (String) -> Unit = {}
     ) {
         viewModelScope.launch(Dispatchers.IO) {
             _isLoading.value = true
@@ -406,6 +417,7 @@ class MainViewModel @JvmOverloads constructor(
                     kotlinx.coroutines.withContext(Dispatchers.Main) { onSuccess() }
                 } else {
                     _uiMessage.value = result.exceptionOrNull()?.message ?: "還款失敗"
+                    kotlinx.coroutines.withContext(Dispatchers.Main) { onError(_uiMessage.value ?: "還款失敗") }
                 }
             } finally {
                 _isLoading.value = false

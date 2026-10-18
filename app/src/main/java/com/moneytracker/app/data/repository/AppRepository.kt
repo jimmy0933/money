@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 
+
 data class LoanWithDetails(
     val loan: LoanEntity,
     val contact: ContactEntity?,
@@ -114,30 +115,47 @@ class AppRepository(private val db: AppDatabase) {
     fun getAllContactsFlow(): Flow<List<ContactEntity>> = contactDao.getAllContactsFlow()
 
     suspend fun addContact(name: String, phone: String = "", note: String = ""): Long {
-        val existing = contactDao.getContactByName(name.trim())
-        if (existing != null) return existing.id
-        return contactDao.insertContact(ContactEntity(name = name.trim(), phone = phone.trim(), note = note.trim()))
+        return DataOperationCoordinator.runWriteOperation {
+            db.withTransaction {
+                val existing = contactDao.getContactByName(name.trim())
+                if (existing != null) return@withTransaction existing.id
+                contactDao.insertContact(ContactEntity(name = name.trim(), phone = phone.trim(), note = note.trim()))
+            }
+        }
     }
 
     suspend fun updateContact(contact: ContactEntity) {
-        contactDao.updateContact(contact.copy(updatedAt = System.currentTimeMillis()))
+        DataOperationCoordinator.runWriteOperation {
+            db.withTransaction {
+                contactDao.updateContact(contact.copy(updatedAt = System.currentTimeMillis()))
+            }
+        }
     }
 
     suspend fun softDeleteContact(id: Long) {
-        contactDao.softDeleteContact(id)
+        DataOperationCoordinator.runWriteOperation {
+            db.withTransaction {
+                contactDao.softDeleteContact(id)
+            }
+        }
     }
     suspend fun getOrCreateContact(name: String, phone: String = ""): ContactEntity {
-        val existing = contactDao.getContactByName(name.trim())
-        if (existing != null) return existing
-        val id = contactDao.insertContact(ContactEntity(name = name.trim(), phone = phone.trim()))
-        return contactDao.getContactById(id)!!
+        return DataOperationCoordinator.runWriteOperation {
+            db.withTransaction {
+                val existing = contactDao.getContactByName(name.trim())
+                if (existing != null) return@withTransaction existing
+                val id = contactDao.insertContact(ContactEntity(name = name.trim(), phone = phone.trim()))
+                contactDao.getContactById(id)!!
+            }
+        }
     }
 
     fun getContactSummariesFlow(): Flow<List<ContactSummary>> {
         return combine(
             contactDao.getAllContactsFlow(),
-            loanDao.getAllLoansFlow()
-        ) { contacts, loans ->
+            loanDao.getAllLoansFlow(),
+            loanRepaymentDao.getAllRepaymentsFlow()
+        ) { contacts, loans, allRepayments ->
             contacts.map { contact ->
                 val contactLoans = loans.filter { it.contactId == contact.id }
                 var totalLend = 0L
@@ -146,7 +164,7 @@ class AppRepository(private val db: AppDatabase) {
                 var totalBorrowRepaid = 0L
 
                 for (loan in contactLoans) {
-                    val repaid = loanRepaymentDao.getTotalRepaidForLoan(loan.id)
+                    val repaid = allRepayments.filter { it.loanId == loan.id }.sumOf { it.amount }
                     if (loan.type == LoanType.LEND) {
                         totalLend += loan.amount
                         totalLendRepaid += repaid
@@ -176,12 +194,13 @@ class AppRepository(private val db: AppDatabase) {
         return combine(
             loanDao.getAllLoansFlow(),
             accountDao.getAllAccountsFlow(),
-            contactDao.getAllContactsFlow()
-        ) { loans, accounts, contacts ->
+            contactDao.getAllContactsFlow(),
+            loanRepaymentDao.getAllRepaymentsFlow()
+        ) { loans, accounts, contacts, allRepayments ->
             loans.map { loan ->
                 val contact = contacts.find { it.id == loan.contactId }
                 val account = accounts.find { it.id == loan.accountId }
-                val repayments = loanRepaymentDao.getRepaymentsByLoanId(loan.id)
+                val repayments = allRepayments.filter { it.loanId == loan.id }.sortedWith(compareBy({ it.dateMillis }, { it.id }))
                 val repaid = repayments.sumOf { it.amount }
                 val remaining = (loan.amount - repaid).coerceAtLeast(0L)
 

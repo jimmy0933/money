@@ -22,6 +22,9 @@ interface ContactDao {
     @Query("SELECT * FROM contacts WHERE id = :id AND isDeleted = 0")
     suspend fun getContactById(id: Long): ContactEntity?
 
+    @Query("SELECT * FROM contacts WHERE id = :id")
+    suspend fun getContactByIdWithDeleted(id: Long): ContactEntity?
+
     @Query("SELECT * FROM contacts WHERE name = :name AND isDeleted = 0 LIMIT 1")
     suspend fun getContactByName(name: String): ContactEntity?
 
