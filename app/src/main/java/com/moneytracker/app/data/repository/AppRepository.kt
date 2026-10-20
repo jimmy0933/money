@@ -279,7 +279,7 @@ class AppRepository(private val db: AppDatabase) {
         return DataOperationCoordinator.runWriteOperation {
             db.withTransaction {
                 val contact = if (contactId != null) {
-                    contactDao.getContactById(contactId) ?: getOrCreateContactInternal(contactName)
+                    contactDao.getContactById(contactId) ?: throw IllegalArgumentException("指定的聯絡人已不存在或被刪除")
                 } else {
                     getOrCreateContactInternal(contactName)
                 }
