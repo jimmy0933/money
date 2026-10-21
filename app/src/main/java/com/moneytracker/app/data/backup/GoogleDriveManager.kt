@@ -1,7 +1,9 @@
 package com.moneytracker.app.data.backup
 
 import android.content.Context
+import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential
+import com.google.api.client.googleapis.extensions.android.gms.auth.UserRecoverableAuthIOException
 import com.google.api.client.http.ByteArrayContent
 import com.google.api.client.http.javanet.NetHttpTransport
 import com.google.api.client.json.gson.GsonFactory
@@ -19,8 +21,13 @@ class GoogleDriveManager(
         val credential = GoogleAccountCredential.usingOAuth2(
             context,
             listOf(DriveScopes.DRIVE_APPDATA, DriveScopes.DRIVE_FILE)
-        ).apply {
-            selectedAccountName = accountName
+        )
+
+        val account = GoogleSignIn.getLastSignedInAccount(context)
+        if (account?.account != null) {
+            credential.selectedAccount = account.account
+        } else {
+            throw DriveAuthException(null)
         }
 
         Drive.Builder(
@@ -33,52 +40,75 @@ class GoogleDriveManager(
     }
 
     override suspend fun uploadBackupFile(fileName: String, data: ByteArray): String = withContext(Dispatchers.IO) {
-        val fileMetadata = File().apply {
-            name = fileName
-            parents = listOf("appDataFolder")
+        try {
+            val fileMetadata = File().apply {
+                name = fileName
+                parents = listOf("appDataFolder")
+            }
+
+            val mediaContent = ByteArrayContent("application/json", data)
+            val file = driveService.files().create(fileMetadata, mediaContent)
+                .setFields("id")
+                .execute()
+
+            file.id
+        } catch (e: Exception) {
+            if (e is UserRecoverableAuthIOException) {
+                throw DriveAuthException(e.intent)
+            }
+            throw e
         }
-
-        val mediaContent = ByteArrayContent("application/json", data)
-        val file = driveService.files().create(fileMetadata, mediaContent)
-            .setFields("id")
-            .execute()
-
-        file.id
     }
 
     override suspend fun listBackupFiles(): List<CloudBackupInfo> = withContext(Dispatchers.IO) {
         val allFiles = mutableListOf<File>()
         var pageToken: String? = null
 
-        do {
-            val request = driveService.files().list()
-                .setSpaces("appDataFolder")
-                .setFields("nextPageToken, files(id, name, createdTime, size)")
-                .setOrderBy("createdTime desc")
-                .setPageSize(100)
+        try {
+            do {
+                val request = driveService.files().list()
+                    .setSpaces("appDataFolder")
+                    .setFields("nextPageToken, files(id, name, createdTime, size)")
+                    .setOrderBy("createdTime desc")
+                    .setPageSize(100)
 
-            if (pageToken != null) {
-                request.pageToken = pageToken
+                if (pageToken != null) {
+                    request.pageToken = pageToken
+                }
+
+                val result = request.execute()
+                result.files?.let { allFiles.addAll(it) }
+                pageToken = result.nextPageToken
+            } while (pageToken != null)
+
+            allFiles.map { file ->
+                CloudBackupInfo(
+                    fileId = file.id,
+                    fileName = file.name ?: "backup.json",
+                    createdTimeMillis = file.createdTime?.value ?: System.currentTimeMillis(),
+                    sizeBytes = file.getSize() ?: 0L
+                )
             }
-
-            val result = request.execute()
-            result.files?.let { allFiles.addAll(it) }
-            pageToken = result.nextPageToken
-        } while (pageToken != null)
-
-        allFiles.map { file ->
-            CloudBackupInfo(
-                fileId = file.id,
-                fileName = file.name ?: "backup.json",
-                createdTimeMillis = file.createdTime?.value ?: System.currentTimeMillis(),
-                sizeBytes = file.getSize() ?: 0L
-            )
+        } catch (e: Exception) {
+            if (e is UserRecoverableAuthIOException) {
+                throw DriveAuthException(e.intent)
+            }
+            throw e
         }
     }
 
     override suspend fun downloadBackupFile(fileId: String): ByteArray = withContext(Dispatchers.IO) {
-        val outputStream = java.io.ByteArrayOutputStream()
-        driveService.files().get(fileId).executeMediaAndDownloadTo(outputStream)
-        outputStream.toByteArray()
+        try {
+            val outputStream = java.io.ByteArrayOutputStream()
+            driveService.files().get(fileId).executeMediaAndDownloadTo(outputStream)
+            outputStream.toByteArray()
+        } catch (e: Exception) {
+            if (e is UserRecoverableAuthIOException) {
+                throw DriveAuthException(e.intent)
+            }
+            throw e
+        }
     }
 }
+
+class DriveAuthException(val intent: android.content.Intent?) : Exception("Requires user authorization for Google Drive")

@@ -1,12 +1,14 @@
 package com.moneytracker.app.ui.viewmodel
 
 import android.app.Application
+import android.content.Intent
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.moneytracker.app.data.backup.BackupPayload
 import com.moneytracker.app.data.backup.BackupRestoreRepository
 import com.moneytracker.app.data.backup.BackupSuccessDetails
 import com.moneytracker.app.data.backup.CloudBackupInfo
+import com.moneytracker.app.data.backup.DriveAuthException
 import com.moneytracker.app.data.backup.DriveManager
 import com.moneytracker.app.data.backup.GoogleDriveManager
 import com.moneytracker.app.data.backup.VerifiedRestoreSummary
@@ -99,7 +101,8 @@ class MainViewModel @JvmOverloads constructor(
         LOGGED_OUT,
         LOGGING_IN,
         LOGGED_IN,
-        FAILED
+        FAILED,
+        NEEDS_AUTH
     }
 
     sealed class AccountSaveUiState {
@@ -143,6 +146,9 @@ class MainViewModel @JvmOverloads constructor(
     private val _googleAuthErrorMessage = MutableStateFlow<String?>(null)
     val googleAuthErrorMessage: StateFlow<String?> = _googleAuthErrorMessage.asStateFlow()
 
+    private val _driveAuthIntent = MutableStateFlow<Intent?>(null)
+    val driveAuthIntent: StateFlow<Intent?> = _driveAuthIntent.asStateFlow()
+
     private val _lastBackupTime = MutableStateFlow<Long?>(null)
     val lastBackupTime: StateFlow<Long?> = _lastBackupTime.asStateFlow()
 
@@ -172,6 +178,9 @@ class MainViewModel @JvmOverloads constructor(
     private val _isLoading = kotlinx.coroutines.flow.MutableStateFlow(false)
     val isLoading: kotlinx.coroutines.flow.StateFlow<Boolean> = _isLoading.asStateFlow()
 
+    // Add a state to trigger retry
+    private var pendingOperation: (() -> Unit)? = null
+
     init {
         loadSettings()
     }
@@ -200,7 +209,13 @@ class MainViewModel @JvmOverloads constructor(
             _isRestorePending.value = pending
 
             if (cleanEmail != null) {
-                _googleAuthState.value = GoogleAuthState.LOGGED_IN
+                val needsUpdate = db.settingsAndBackupDao().getSettingValue("google_auth_needs_update")
+                if (needsUpdate == "true") {
+                    _googleAuthState.value = GoogleAuthState.NEEDS_AUTH
+                    _googleAuthErrorMessage.value = "背景自動備份失敗：需要重新授權 Google Drive"
+                } else {
+                    _googleAuthState.value = GoogleAuthState.LOGGED_IN
+                }
                 if (!pending) {
                     BackupWorker.schedulePeriodicBackup(getApplication())
                 }
@@ -216,6 +231,7 @@ class MainViewModel @JvmOverloads constructor(
     fun startGoogleSignIn() {
         _googleAuthState.value = GoogleAuthState.LOGGING_IN
         _googleAuthErrorMessage.value = null
+        _driveAuthIntent.value = null
     }
 
     fun onGoogleSignInSuccess(email: String) {
@@ -231,6 +247,9 @@ class MainViewModel @JvmOverloads constructor(
             _googleAccountEmail.value = cleanEmail
             _googleAuthState.value = GoogleAuthState.LOGGED_IN
             _googleAuthErrorMessage.value = null
+            _driveAuthIntent.value = null
+
+            db.settingsAndBackupDao().setSettingValue(AppSettingsEntity("google_auth_needs_update", "false"))
 
             // 若為新帳號或首次登入，預設設為 restorePending = true，防止上傳預設資料
             if (isAccountChanged && !backupRepo.isRestorePending(cleanEmail)) {
@@ -249,6 +268,10 @@ class MainViewModel @JvmOverloads constructor(
             }
 
             _uiMessage.value = "已成功連結 Google 帳號：$cleanEmail"
+
+            // Resume any pending operation
+            pendingOperation?.invoke()
+            pendingOperation = null
         }
     }
 
@@ -262,6 +285,19 @@ class MainViewModel @JvmOverloads constructor(
         }
         _googleAuthErrorMessage.value = userMsg
         _uiMessage.value = userMsg
+        pendingOperation = null
+    }
+
+    fun onGoogleSignInNeedsAuth(email: String, message: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            DatabaseInitializer.ensureInitialized(db)
+            db.settingsAndBackupDao().setSettingValue(AppSettingsEntity("google_account_email", email))
+            _googleAccountEmail.value = email
+            _googleAuthState.value = GoogleAuthState.NEEDS_AUTH
+            _googleAuthErrorMessage.value = null
+            _driveAuthIntent.value = null
+            _uiMessage.value = message
+        }
     }
 
     fun signOutGoogleAccount() {
@@ -275,7 +311,9 @@ class MainViewModel @JvmOverloads constructor(
             _lastBackupTime.value = null
             _googleAuthState.value = GoogleAuthState.LOGGED_OUT
             _googleAuthErrorMessage.value = null
+            _driveAuthIntent.value = null
             _uiMessage.value = "已登出 Google 帳號，並清空雲端備份歷史對照"
+            pendingOperation = null
         }
     }
 
@@ -503,9 +541,18 @@ class MainViewModel @JvmOverloads constructor(
                     _backupUiState.value = BackupUiState.Success(details)
                     _uiMessage.value = "Google Drive 備份成功！"
                 } else {
-                    val errorMsg = result.exceptionOrNull()?.message ?: "備份失敗"
-                    _backupUiState.value = BackupUiState.Error(errorMsg)
-                    _uiMessage.value = "備份失敗: $errorMsg"
+                    val exception = result.exceptionOrNull()
+                    if (exception is DriveAuthException) {
+                        _googleAuthState.value = GoogleAuthState.NEEDS_AUTH
+                        _driveAuthIntent.value = exception.intent
+                        pendingOperation = { performBackup(password, customDriveManager, saveAutoBackupPassword) }
+                        _uiMessage.value = "需要重新授權 Google Drive"
+                        _backupUiState.value = BackupUiState.Error("需要重新授權 Google Drive")
+                    } else {
+                        val errorMsg = exception?.message ?: "備份失敗"
+                        _backupUiState.value = BackupUiState.Error(errorMsg)
+                        _uiMessage.value = "備份失敗: $errorMsg"
+                    }
                 }
             } catch (e: Exception) {
                 val errorMsg = e.message ?: "備份過程發生錯誤"
@@ -543,9 +590,18 @@ class MainViewModel @JvmOverloads constructor(
                         _cloudBackupListState.value = CloudBackupListState.Success(backups)
                     }
                 } else {
-                    val errorMsg = result.exceptionOrNull()?.message ?: "無法取得雲端備份列表"
-                    _cloudBackupListState.value = CloudBackupListState.Error(errorMsg)
-                    _uiMessage.value = "取得雲端備份失敗: $errorMsg"
+                    val exception = result.exceptionOrNull()
+                    if (exception is DriveAuthException) {
+                        _googleAuthState.value = GoogleAuthState.NEEDS_AUTH
+                        _driveAuthIntent.value = exception.intent
+                        pendingOperation = { fetchCloudBackups(customDriveManager) }
+                        _cloudBackupListState.value = CloudBackupListState.Error("需要重新授權 Google Drive")
+                        _uiMessage.value = "需要重新授權 Google Drive"
+                    } else {
+                        val errorMsg = exception?.message ?: "無法取得雲端備份列表"
+                        _cloudBackupListState.value = CloudBackupListState.Error(errorMsg)
+                        _uiMessage.value = "取得雲端備份失敗: $errorMsg"
+                    }
                 }
             } catch (e: Exception) {
                 val errorMsg = e.message ?: "發生未知錯誤"
@@ -576,9 +632,18 @@ class MainViewModel @JvmOverloads constructor(
                     val payload = result.getOrThrow()
                     _restoreUiState.value = RestoreUiState.Preview(fileId, payload)
                 } else {
-                    val errorMsg = result.exceptionOrNull()?.message ?: "備份檔檢驗失敗"
-                    _restoreUiState.value = RestoreUiState.Error(errorMsg)
-                    _uiMessage.value = "備份檢驗失敗: $errorMsg"
+                    val exception = result.exceptionOrNull()
+                    if (exception is DriveAuthException) {
+                        _googleAuthState.value = GoogleAuthState.NEEDS_AUTH
+                        _driveAuthIntent.value = exception.intent
+                        pendingOperation = { inspectBackupForRestore(fileId, password, customDriveManager) }
+                        _restoreUiState.value = RestoreUiState.Error("需要重新授權 Google Drive")
+                        _uiMessage.value = "需要重新授權 Google Drive"
+                    } else {
+                        val errorMsg = exception?.message ?: "備份檔檢驗失敗"
+                        _restoreUiState.value = RestoreUiState.Error(errorMsg)
+                        _uiMessage.value = "備份檢驗失敗: $errorMsg"
+                    }
                 }
             } catch (e: Exception) {
                 val errorMsg = e.message ?: "發生未知錯誤"
@@ -622,9 +687,18 @@ class MainViewModel @JvmOverloads constructor(
                     _restoreUiState.value = RestoreUiState.Success(summary)
                     _uiMessage.value = "資料還原成功！"
                 } else {
-                    val errorMsg = restoreResult.exceptionOrNull()?.message ?: "寫入資料庫失敗"
-                    _restoreUiState.value = RestoreUiState.Error(errorMsg)
-                    _uiMessage.value = "還原失敗: $errorMsg"
+                    val exception = restoreResult.exceptionOrNull()
+                    if (exception is DriveAuthException) {
+                        _googleAuthState.value = GoogleAuthState.NEEDS_AUTH
+                        _driveAuthIntent.value = exception.intent
+                        pendingOperation = { confirmAndRestoreCloudBackup(fileId, password, customDriveManager) }
+                        _restoreUiState.value = RestoreUiState.Error("需要重新授權 Google Drive")
+                        _uiMessage.value = "需要重新授權 Google Drive"
+                    } else {
+                        val errorMsg = exception?.message ?: "寫入資料庫失敗"
+                        _restoreUiState.value = RestoreUiState.Error(errorMsg)
+                        _uiMessage.value = "還原失敗: $errorMsg"
+                    }
                 }
             } catch (e: Exception) {
                 val errorMsg = e.message ?: "還原過程發生未知錯誤"
