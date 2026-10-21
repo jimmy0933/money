@@ -620,6 +620,7 @@ fun ContactDetailView(
 @Composable
 fun AddLoanDialog(viewModel: MainViewModel, contactSummaries: List<ContactSummary>, onDismiss: () -> Unit) {
     var contactName by remember { mutableStateOf("") }
+    var selectedContactId by remember { mutableStateOf<Long?>(null) }
     var selectedTypeIndex by remember { mutableStateOf(0) } // 0: 借出, 1: 借入
     var amountText by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
@@ -684,6 +685,7 @@ fun AddLoanDialog(viewModel: MainViewModel, contactSummaries: List<ContactSummar
                         value = contactName,
                         onValueChange = {
                             contactName = it
+                            selectedContactId = null
                             contactExpanded = true
                         },
                         label = { Text("對象姓名 (可輸入新增或選取)") },
@@ -700,10 +702,12 @@ fun AddLoanDialog(viewModel: MainViewModel, contactSummaries: List<ContactSummar
                             onDismissRequest = { contactExpanded = false }
                         ) {
                             filteredContacts.forEach { summary ->
+                                val extraInfo = if (summary.contact.phone.isNotBlank()) " - ${summary.contact.phone}" else ""
                                 DropdownMenuItem(
-                                    text = { Text(summary.contact.name) },
+                                    text = { Text(summary.contact.name + extraInfo) },
                                     onClick = {
                                         contactName = summary.contact.name
+                                        selectedContactId = summary.contact.id
                                         contactExpanded = false
                                     }
                                 )
@@ -849,6 +853,7 @@ fun AddLoanDialog(viewModel: MainViewModel, contactSummaries: List<ContactSummar
                                 dueDateMillis = dueDateMillis,
                                 accountId = acc.id,
                                 note = note,
+                                contactId = selectedContactId,
                                 onSuccess = onDismiss,
                                 onError = { err ->
                                     isSaving = false

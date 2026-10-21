@@ -384,6 +384,7 @@ class MainViewModel @JvmOverloads constructor(
         dueDateMillis: Long?,
         accountId: Long,
         note: String,
+        contactId: Long? = null,
         onSuccess: () -> Unit = {}, onError: (String) -> Unit = {}
     ) {
         viewModelScope.launch(Dispatchers.IO) {
@@ -397,7 +398,8 @@ class MainViewModel @JvmOverloads constructor(
                     dateMillis = dateMillis,
                     dueDateMillis = dueDateMillis,
                     accountId = accountId,
-                    note = note
+                    note = note,
+                    contactId = contactId
                 )
                 _uiMessage.value = "新增借貸紀錄成功"
                 kotlinx.coroutines.withContext(Dispatchers.Main) { onSuccess() }
@@ -466,11 +468,14 @@ class MainViewModel @JvmOverloads constructor(
         }
     }
 
-    fun performBackup(password: String?, customDriveManager: DriveManager? = null) {
+    fun performBackup(password: String?, customDriveManager: DriveManager? = null, saveAutoBackupPassword: Boolean = false) {
         if (_isOperationInProgress.value) return
         viewModelScope.launch(Dispatchers.IO) {
             DatabaseInitializer.ensureInitialized(db)
             val email = _googleAccountEmail.value
+            if (saveAutoBackupPassword) {
+                com.moneytracker.app.data.backup.SecureStorageManager.setAutoBackupPassword(getApplication(), password)
+            }
             if (email.isNullOrEmpty() && customDriveManager == null) {
                 _uiMessage.value = "請先連動 Google 帳號"
                 _backupUiState.value = BackupUiState.Error("請先連動 Google 帳號")

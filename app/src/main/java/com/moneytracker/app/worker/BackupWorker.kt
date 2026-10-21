@@ -34,9 +34,14 @@ class BackupWorker(
             return Result.success()
         }
 
-        val password = db.settingsAndBackupDao().getSettingValue("backup_password")
+        val isEncrypted = com.moneytracker.app.data.backup.SecureStorageManager.isAutoBackupEncrypted(applicationContext)
+        val password = com.moneytracker.app.data.backup.SecureStorageManager.getAutoBackupPassword(applicationContext)
 
-        val result = backupRepo.backupToGoogleDrive(password)
+        if (isEncrypted && password.isNullOrBlank()) {
+            return Result.failure()
+        }
+
+        val result = backupRepo.backupToGoogleDrive(if (isEncrypted) password else null)
 
         return if (result.isSuccess) {
             Result.success()

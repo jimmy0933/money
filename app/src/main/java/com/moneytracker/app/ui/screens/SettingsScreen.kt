@@ -86,6 +86,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
     var showCategoryDialog by remember { mutableStateOf(false) }
     var showBackupPasswordDialog by remember { mutableStateOf(false) }
     var showRestoreDialog by remember { mutableStateOf(false) }
+    var restoreTargetFileId by remember { mutableStateOf<String?>(null) }
 
     val dateFormat = SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.TAIWAN)
 
@@ -284,8 +285,8 @@ fun SettingsScreen(viewModel: MainViewModel) {
                                         onClick = {
                                             viewModel.resetRestoreUiState()
                                             viewModel.fetchCloudBackups()
+                                            restoreTargetFileId = details.driveFileId
                                             showRestoreDialog = true
-                                            viewModel.inspectBackupForRestore(details.driveFileId, null)
                                         },
                                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
                                         modifier = Modifier.height(32.dp)
@@ -322,6 +323,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
                             onClick = {
                                 viewModel.resetRestoreUiState()
                                 viewModel.fetchCloudBackups()
+                                restoreTargetFileId = null
                                 showRestoreDialog = true
                             },
                             modifier = Modifier.weight(1f),
@@ -420,12 +422,19 @@ fun SettingsScreen(viewModel: MainViewModel) {
 
     if (showBackupPasswordDialog) {
         var pwdInput by remember { mutableStateOf("") }
+        var saveAsAutoBackup by remember { mutableStateOf(false) }
+        val isCurrentlyEncrypted = com.moneytracker.app.data.backup.SecureStorageManager.isAutoBackupEncrypted(context)
         AlertDialog(
             onDismissRequest = { showBackupPasswordDialog = false },
             title = { Text("自訂備份密碼 (可不填)") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("設定自訂密碼以 AES 加密備份檔案。如設定密碼，還原時必須輸入該密碼；若忘記密碼將無法還原！", fontSize = 12.sp, color = Color.Red)
+                    if (isCurrentlyEncrypted) {
+                        Text("目前狀態：自動備份【已啟用加密】", fontSize = 12.sp, color = Color(0xFF2E7D32), fontWeight = androidx.compose.ui.text.font.FontWeight.Bold)
+                    } else {
+                        Text("目前狀態：自動備份【未啟用加密】", fontSize = 12.sp, color = Color.DarkGray)
+                    }
                     OutlinedTextField(
                         value = pwdInput,
                         onValueChange = { pwdInput = it },
@@ -433,12 +442,19 @@ fun SettingsScreen(viewModel: MainViewModel) {
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        androidx.compose.material3.Checkbox(
+                            checked = saveAsAutoBackup,
+                            onCheckedChange = { saveAsAutoBackup = it }
+                        )
+                        Text("同時將此密碼設定為自動備份加密密碼 (留空則取消自動備份加密)", fontSize = 12.sp)
+                    }
                 }
             },
             confirmButton = {
                 Button(
                     onClick = {
-                        viewModel.performBackup(pwdInput.ifBlank { null })
+                        viewModel.performBackup(pwdInput.ifBlank { null }, saveAutoBackupPassword = saveAsAutoBackup)
                         showBackupPasswordDialog = false
                     }
                 ) {
@@ -453,7 +469,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
 
     if (showRestoreDialog) {
         var pwdInput by remember { mutableStateOf("") }
-        var selectedFileId by remember { mutableStateOf<String?>(null) }
+        var selectedFileId by remember { mutableStateOf<String?>(restoreTargetFileId) }
         val selectedFile = cloudBackups.find { it.fileId == selectedFileId }
 
         AlertDialog(
