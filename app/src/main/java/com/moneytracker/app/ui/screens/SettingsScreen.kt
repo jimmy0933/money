@@ -70,6 +70,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
     val googleAccountEmail by viewModel.googleAccountEmail.collectAsState()
     val googleAuthState by viewModel.googleAuthState.collectAsState()
     val googleAuthErrorMessage by viewModel.googleAuthErrorMessage.collectAsState()
+    val driveAuthIntent by viewModel.driveAuthIntent.collectAsState()
     val lastBackupTime by viewModel.lastBackupTime.collectAsState()
     val cloudBackups by viewModel.cloudBackups.collectAsState()
     val cloudBackupListState by viewModel.cloudBackupListState.collectAsState()
@@ -87,10 +88,10 @@ fun SettingsScreen(viewModel: MainViewModel) {
     var showBackupPasswordDialog by remember { mutableStateOf(false) }
     var showRestoreDialog by remember { mutableStateOf(false) }
     var restoreTargetFileId by remember { mutableStateOf<String?>(null) }
+    var pendingAuthEmail by remember { mutableStateOf<String?>(null) }
 
     val dateFormat = SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.TAIWAN)
 
-    // Google Sign-In Activity Result Launcher
     val googleSignInLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -107,16 +108,8 @@ fun SettingsScreen(viewModel: MainViewModel) {
             if (!email.isNullOrBlank() && hasDrivePermission) {
                 viewModel.onGoogleSignInSuccess(email)
             } else if (!email.isNullOrBlank()) {
-                if (context is Activity) {
-                    GoogleSignIn.requestPermissions(
-                        context,
-                        1001,
-                        account,
-                        Scope(DriveScopes.DRIVE_APPDATA),
-                        Scope(DriveScopes.DRIVE_FILE)
-                    )
-                }
-                viewModel.onGoogleSignInFailure(null, "尚未授予 Google Drive 存取權限，請確認授權後重試")
+                pendingAuthEmail = email
+                viewModel.onGoogleSignInNeedsAuth(email, "尚未授予 Google Drive 存取權限，請確認授權後重試")
             } else {
                 viewModel.onGoogleSignInFailure(null, "未取得 Google 帳號 Email")
             }
@@ -124,6 +117,32 @@ fun SettingsScreen(viewModel: MainViewModel) {
             viewModel.onGoogleSignInFailure(e.statusCode, e.message)
         } catch (e: Exception) {
             viewModel.onGoogleSignInFailure(null, e.message)
+        }
+    }
+
+    val driveAuthLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val email = pendingAuthEmail ?: googleAccountEmail
+            if (email != null) {
+                viewModel.onGoogleSignInSuccess(email)
+            } else {
+                viewModel.onGoogleSignInFailure(null, "授權後無法取得 Email")
+            }
+        } else {
+            val email = pendingAuthEmail ?: googleAccountEmail
+            if (email != null) {
+                viewModel.onGoogleSignInNeedsAuth(email, "未授權 Google Drive 存取權限，請重新授權")
+            } else {
+                viewModel.onGoogleSignInFailure(null, "未授權 Google Drive 存取權限")
+            }
+        }
+    }
+
+    LaunchedEffect(driveAuthIntent) {
+        driveAuthIntent?.let { intent ->
+            driveAuthLauncher.launch(intent)
         }
     }
 
@@ -218,8 +237,18 @@ fun SettingsScreen(viewModel: MainViewModel) {
 
                         Button(
                             onClick = {
-                                if (googleAccountEmail.isNullOrBlank()) {
-                                    launchGoogleSignIn()
+                                if (googleAuthState == MainViewModel.GoogleAuthState.NEEDS_AUTH && driveAuthIntent != null) {
+                                    driveAuthLauncher.launch(driveAuthIntent!!)
+                                } else if (googleAccountEmail.isNullOrBlank() || googleAuthState == MainViewModel.GoogleAuthState.NEEDS_AUTH) {
+                                    if (googleAuthState == MainViewModel.GoogleAuthState.NEEDS_AUTH) {
+                                        // 強制登出以確保下次 launchGoogleSignIn() 能完整走一遍驗證流程並補足 scopes
+                                        val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN).build()
+                                        GoogleSignIn.getClient(context, gso).signOut().addOnCompleteListener {
+                                            launchGoogleSignIn()
+                                        }
+                                    } else {
+                                        launchGoogleSignIn()
+                                    }
                                 } else {
                                     val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN).build()
                                     GoogleSignIn.getClient(context, gso).signOut()
@@ -228,12 +257,13 @@ fun SettingsScreen(viewModel: MainViewModel) {
                             },
                             enabled = googleAuthState != MainViewModel.GoogleAuthState.LOGGING_IN,
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = if (googleAccountEmail.isNullOrBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                containerColor = if (googleAccountEmail.isNullOrBlank() || googleAuthState == MainViewModel.GoogleAuthState.NEEDS_AUTH) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         ) {
                             Text(
                                 when (googleAuthState) {
                                     MainViewModel.GoogleAuthState.LOGGING_IN -> "登入中..."
+                                    MainViewModel.GoogleAuthState.NEEDS_AUTH -> "重新授權"
                                     MainViewModel.GoogleAuthState.LOGGED_IN -> "切換/登出"
                                     else -> "登入 Google"
                                 }
@@ -247,7 +277,17 @@ fun SettingsScreen(viewModel: MainViewModel) {
                     val timeStr = if (lastBackupTime != null) dateFormat.format(Date(lastBackupTime!!)) else "尚無備份"
                     Text("上次成功備份時間: $timeStr", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
-                    if (!googleAuthErrorMessage.isNullOrBlank()) {
+                    if (googleAuthState == MainViewModel.GoogleAuthState.NEEDS_AUTH) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "授權已過期或被撤銷，請點擊上方「重新授權」",
+                            color = MaterialTheme.colorScheme.error,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    if (!googleAuthErrorMessage.isNullOrBlank() && googleAuthState != MainViewModel.GoogleAuthState.NEEDS_AUTH) {
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             text = googleAuthErrorMessage!!,

@@ -9,6 +9,7 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.moneytracker.app.data.backup.BackupRestoreRepository
+import com.moneytracker.app.data.backup.DriveAuthException
 import com.moneytracker.app.data.backup.GoogleDriveManager
 import com.moneytracker.app.data.db.AppDatabase
 import java.util.concurrent.TimeUnit
@@ -46,7 +47,16 @@ class BackupWorker(
         return if (result.isSuccess) {
             Result.success()
         } else {
-            Result.retry()
+            val exception = result.exceptionOrNull()
+            if (exception is DriveAuthException) {
+                // Return failure if auth is needed, avoid infinite retries
+                db.settingsAndBackupDao().setSettingValue(
+                    com.moneytracker.app.data.entity.AppSettingsEntity("google_auth_needs_update", "true")
+                )
+                Result.failure()
+            } else {
+                Result.retry()
+            }
         }
     }
 
