@@ -1,6 +1,7 @@
 package com.moneytracker.app
 
 import android.content.Context
+import androidx.lifecycle.viewModelScope
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.moneytracker.app.data.db.AppDatabase
@@ -9,6 +10,7 @@ import com.moneytracker.app.data.model.LoanType
 import com.moneytracker.app.data.model.TransactionType
 import com.moneytracker.app.ui.viewmodel.MainViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -50,6 +52,8 @@ class MainViewModelTest {
 
     @After
     fun tearDown() {
+        // 先取消 ViewModel 背景協程，避免資料庫關閉後仍有 IO 作業造成例外洩漏到其他測試
+        viewModel.viewModelScope.cancel()
         db.close()
         Dispatchers.resetMain()
     }
