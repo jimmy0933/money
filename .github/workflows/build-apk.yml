@@ -10,6 +10,10 @@ name: Build & Package Android APK
       - master
   workflow_dispatch:
 
+permissions:
+  contents: write
+  actions: write
+
 jobs:
   build:
     name: Build APK and Run Unit Tests
@@ -196,3 +200,30 @@ jobs:
           name: test-report-${{ github.sha }}
           path: app/build/reports/tests/testDebugUnitTest/
           retention-days: 30
+
+      - name: Publish latest APK (single fixed download link)
+        if: success() && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp "$TARGET_APK" MoneyTracker-latest.apk
+          gh release delete latest --cleanup-tag -y || true
+          gh release create latest MoneyTracker-latest.apk artifacts/apk_signature_fingerprints.txt \
+            --title "Latest APK" \
+            --notes "Commit ${GITHUB_SHA} (${SIGNING_STATUS})" \
+            --target "$GITHUB_SHA" --prerelease
+          echo "APK: https://github.com/${{ github.repository }}/releases/download/latest/MoneyTracker-latest.apk" >> $GITHUB_STEP_SUMMARY
+
+      - name: Delete old artifacts and old workflow runs (keep only latest)
+        if: success() && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          REPO=${{ github.repository }}
+          CUR=${{ github.run_id }}
+          gh api --paginate "repos/$REPO/actions/artifacts?per_page=100" \
+            --jq ".artifacts[] | select(.workflow_run.id != $CUR) | .id" |
+            while read -r id; do gh api -X DELETE "repos/$REPO/actions/artifacts/$id" || true; done
+          gh api --paginate "repos/$REPO/actions/runs?per_page=100" \
+            --jq ".workflow_runs[] | select(.id != $CUR and .status == \"completed\") | .id" |
+            while read -r id; do gh api -X DELETE "repos/$REPO/actions/runs/$id" || true; done
