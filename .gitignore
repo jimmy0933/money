@@ -22,3 +22,7 @@ money-keystore-base64.txt
 money-signing-passwords.txt
 signing-info.txt
 restore-keystore.txt
+
+# Build outputs
+*.apk
+*.aab

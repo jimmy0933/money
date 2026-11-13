@@ -266,6 +266,13 @@ class AppRepository(private val db: AppDatabase) {
      *   - 借出 (LEND): 資金從 accountId 流出 (type = EXPENSE, loanId = loanId, sourceAccountId = accountId)
      *   - 借入 (BORROW): 資金流入 accountId (type = INCOME, loanId = loanId, sourceAccountId = accountId)
      */
+    private suspend fun requireActiveAccount(accountId: Long) {
+        val account = accountDao.getAccountById(accountId)
+        if (account == null || account.isDeleted) {
+            throw IllegalArgumentException("無效的帳戶")
+        }
+    }
+
     suspend fun createLoanTransaction(
         contactName: String,
         type: LoanType,
@@ -278,6 +285,11 @@ class AppRepository(private val db: AppDatabase) {
     ): Long {
         return DataOperationCoordinator.runWriteOperation {
             db.withTransaction {
+                if (amount <= 0) throw IllegalArgumentException("借貸金額必須大於零")
+                if (dueDateMillis != null && dueDateMillis < dateMillis) {
+                    throw IllegalArgumentException("到期日不可早於借貸日期")
+                }
+                requireActiveAccount(accountId)
                 val contact = if (contactId != null) {
                     contactDao.getContactById(contactId) ?: throw IllegalArgumentException("指定的聯絡人已不存在或被刪除")
                 } else {
@@ -335,6 +347,8 @@ class AppRepository(private val db: AppDatabase) {
         return try {
             val repaymentId = DataOperationCoordinator.runWriteOperation {
                 db.withTransaction {
+                    if (amount <= 0) throw IllegalArgumentException("還款金額必須大於零")
+                    requireActiveAccount(accountId)
                     val loan = loanDao.getLoanById(loanId) ?: throw IllegalArgumentException("借貸紀錄不存在")
                     val currentRepaid = loanRepaymentDao.getTotalRepaidForLoan(loanId)
 

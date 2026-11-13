@@ -4,6 +4,7 @@ name: Build & Package Android APK
   push:
     branches:
       - master
+      - 'ccr-*'
   pull_request:
     branches:
       - master
