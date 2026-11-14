@@ -159,10 +159,11 @@ fun SettingsScreen(viewModel: MainViewModel) {
     }
 
     LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(
+            start = 16.dp, end = 16.dp, top = 16.dp, bottom = com.moneytracker.app.ui.components.ListBottomPadding
+        ),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
             Text("設定與雲端備份", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
@@ -224,18 +225,16 @@ fun SettingsScreen(viewModel: MainViewModel) {
                 elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Cloud, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Google Drive 備份", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                        }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Cloud, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Google Drive 備份", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
 
                         Button(
+                            modifier = Modifier.fillMaxWidth(),
                             onClick = {
                                 if (googleAuthState == MainViewModel.GoogleAuthState.NEEDS_AUTH && driveAuthIntent != null) {
                                     driveAuthLauncher.launch(driveAuthIntent!!)
@@ -269,7 +268,6 @@ fun SettingsScreen(viewModel: MainViewModel) {
                                 }
                             )
                         }
-                    }
 
                     Spacer(modifier = Modifier.height(8.dp))
                     Text("連結帳號: ${googleAccountEmail ?: "未連結 (請登入以啟動自動雲端備份)"}", fontSize = 13.sp)
