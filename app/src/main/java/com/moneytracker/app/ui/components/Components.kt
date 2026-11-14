@@ -1,6 +1,21 @@
 package com.moneytracker.app.ui.components
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Surface
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -184,5 +199,100 @@ fun <T> DropdownField(
                 )
             }
         }
+    }
+}
+
+
+/** 全 App 統一的卡片：無陰影、細邊框，深淺色都清楚。 */
+@Composable
+fun AppCard(
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+    containerColor: Color = MaterialTheme.colorScheme.surface,
+    borderColor: Color = MaterialTheme.colorScheme.outlineVariant,
+    content: @Composable () -> Unit
+) {
+    val base = if (onClick != null) modifier.fillMaxWidth().clickable { onClick() } else modifier.fillMaxWidth()
+    Card(
+        modifier = base,
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = containerColor),
+        border = BorderStroke(1.dp, borderColor),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        content()
+    }
+}
+
+/** 頁面標題列：標題靠左、右側可放操作。所有頁面共用，確保位置與字級一致。 */
+@Composable
+fun ScreenHeader(title: String, modifier: Modifier = Modifier, action: (@Composable () -> Unit)? = null) {
+    Row(
+        modifier = modifier.fillMaxWidth().padding(vertical = 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(title, style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onBackground)
+        if (action != null) action()
+    }
+}
+
+/** 上小標籤、下大數字，欄位對齊用。 */
+@Composable
+fun LabeledValue(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+    valueColor: Color = MaterialTheme.colorScheme.onSurface,
+    align: TextAlign = TextAlign.Start,
+    valueStyle: androidx.compose.ui.text.TextStyle = MaterialTheme.typography.titleMedium
+) {
+    val horizontal = when (align) {
+        TextAlign.End -> Alignment.End
+        TextAlign.Center -> Alignment.CenterHorizontally
+        else -> Alignment.Start
+    }
+    Column(modifier = modifier, horizontalAlignment = horizontal) {
+        Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = align, maxLines = 1)
+        Text(value, style = valueStyle, color = valueColor, textAlign = align, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+/** 圓形圖示底。 */
+@Composable
+fun IconBadge(icon: ImageVector, tint: Color, modifier: Modifier = Modifier) {
+    Surface(modifier = modifier.size(40.dp), shape = CircleShape, color = tint.copy(alpha = 0.14f)) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(22.dp))
+        }
+    }
+}
+
+/** 交易/明細列：左圖示、中標題+副標、右金額。首頁與記帳頁共用。 */
+@Composable
+fun TransactionRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    amountText: String,
+    amountColor: Color,
+    modifier: Modifier = Modifier,
+    trailing: (@Composable () -> Unit)? = null
+) {
+    Row(
+        modifier = modifier.fillMaxWidth().padding(start = 12.dp, end = if (trailing != null) 4.dp else 12.dp, top = 10.dp, bottom = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        IconBadge(icon = icon, tint = amountColor)
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (subtitle.isNotBlank()) {
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(amountText, style = MaterialTheme.typography.titleSmall, color = amountColor, maxLines = 1)
+        if (trailing != null) trailing()
     }
 }

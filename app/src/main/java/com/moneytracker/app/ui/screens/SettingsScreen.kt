@@ -161,13 +161,11 @@ fun SettingsScreen(viewModel: MainViewModel) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(
-            start = 16.dp, end = 16.dp, top = 16.dp, bottom = com.moneytracker.app.ui.components.ListBottomPadding
+            start = 16.dp, end = 16.dp, top = 0.dp, bottom = com.moneytracker.app.ui.components.ListBottomPadding
         ),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        item {
-            Text("設定與雲端備份", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        }
+        item { com.moneytracker.app.ui.components.ScreenHeader("設定") }
 
         // 重裝/切換帳號 待還原提示卡片
         if (isRestorePending && !googleAccountEmail.isNullOrBlank()) {
@@ -176,7 +174,8 @@ fun SettingsScreen(viewModel: MainViewModel) {
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
                     shape = RoundedCornerShape(16.dp),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text("尚未完成雲端資料還原選擇", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
@@ -220,15 +219,16 @@ fun SettingsScreen(viewModel: MainViewModel) {
         item {
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 shape = RoundedCornerShape(16.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Cloud, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Google Drive 備份", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text("Google Drive 備份", style = MaterialTheme.typography.titleMedium)
                     }
 
                     Spacer(modifier = Modifier.height(12.dp))
@@ -311,7 +311,8 @@ fun SettingsScreen(viewModel: MainViewModel) {
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F5E9)),
                                 shape = RoundedCornerShape(8.dp),
-                                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
                             ) {
                                 Column(modifier = Modifier.padding(8.dp)) {
                                     Text("最近一次備份成功！", color = Color(0xFF2E7D32), fontWeight = FontWeight.Bold, fontSize = 12.sp)
@@ -396,9 +397,10 @@ fun SettingsScreen(viewModel: MainViewModel) {
         items(accounts) { account ->
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 shape = RoundedCornerShape(12.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
             ) {
                 Row(
                     modifier = Modifier
@@ -410,7 +412,7 @@ fun SettingsScreen(viewModel: MainViewModel) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.AccountBalance, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("${account.name} (${account.type.label})", fontWeight = FontWeight.Bold)
+                        Text(if (account.name == account.type.label) account.name else "${account.name} (${account.type.label})", fontWeight = FontWeight.Bold)
                     }
                     Text("初始: NT$ ${account.initialBalance}", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -436,7 +438,8 @@ fun SettingsScreen(viewModel: MainViewModel) {
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 shape = RoundedCornerShape(12.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
             ) {
                 Row(
                     modifier = Modifier

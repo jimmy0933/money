@@ -62,6 +62,10 @@ import com.moneytracker.app.data.model.LoanStatus
 import com.moneytracker.app.data.model.LoanType
 import com.moneytracker.app.data.repository.ContactSummary
 import com.moneytracker.app.data.repository.LoanWithDetails
+import androidx.compose.foundation.layout.Box
+import com.moneytracker.app.ui.components.AppCard
+import com.moneytracker.app.ui.components.LabeledValue
+import com.moneytracker.app.ui.components.ScreenHeader
 import com.moneytracker.app.ui.components.ConfirmDialog
 import com.moneytracker.app.ui.components.DatePickerField
 import com.moneytracker.app.ui.components.DropdownField
@@ -134,7 +138,8 @@ fun LoansScreen(viewModel: MainViewModel) {
         }
     ) { paddingValues ->
         Column(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
-            TabRow(selectedTabIndex = selectedTab) {
+            Box(modifier = Modifier.padding(horizontal = 16.dp)) { ScreenHeader("借貸") }
+            TabRow(selectedTabIndex = selectedTab, containerColor = Color.Transparent) {
                 Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }, text = { Text("借出") })
                 Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }, text = { Text("借入") })
                 Tab(selected = selectedTab == 2, onClick = { selectedTab = 2 }, text = { Text("對象") })
@@ -230,63 +235,46 @@ fun LoanCard(loanDetail: LoanWithDetails, onClick: () -> Unit) {
     val isOverdue = loan.dueDateMillis != null && loan.dueDateMillis < System.currentTimeMillis() && loanDetail.remainingAmount > 0
     val progress = if (loan.amount > 0) (loanDetail.repaidAmount.toFloat() / loan.amount.toFloat()).coerceIn(0f, 1f) else 0f
 
-    Card(
-        modifier = Modifier.fillMaxWidth().clickable { onClick() },
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-        shape = RoundedCornerShape(16.dp)
-    ) {
+    AppCard(onClick = onClick) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Person, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        loanDetail.contact?.name ?: "未知",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 17.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Person, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    loanDetail.contact?.name ?: "未知",
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
                 Spacer(modifier = Modifier.width(8.dp))
                 StatusChip(status = loan.status, isOverdue = isOverdue)
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Bottom
-            ) {
-                Column {
-                    Text("剩餘", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(
-                        formatMoney(loanDetail.remainingAmount),
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (loanDetail.remainingAmount > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-                    )
-                }
-                Text(
-                    "已還 ${formatMoney(loanDetail.repaidAmount)} / ${formatMoney(loan.amount)}",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                LabeledValue(
+                    label = "剩餘",
+                    value = formatMoney(loanDetail.remainingAmount),
+                    modifier = Modifier.weight(1f),
+                    valueColor = if (loanDetail.remainingAmount > 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                    valueStyle = MaterialTheme.typography.titleLarge
                 )
+                Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.End) {
+                    Text("本金 ${formatMoney(loan.amount)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                    Text("已還 ${formatMoney(loanDetail.repaidAmount)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(10.dp))
             LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
             Spacer(modifier = Modifier.height(8.dp))
 
             val dueText = loan.dueDateMillis?.let { "到期 ${dateFormat.format(Date(it))}" } ?: "無期限"
             Text(
                 "${dateFormat.format(Date(loan.dateMillis))} · $dueText",
-                fontSize = 12.sp,
+                style = MaterialTheme.typography.bodySmall,
                 color = if (isOverdue) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
@@ -315,11 +303,7 @@ fun StatusChip(status: LoanStatus, isOverdue: Boolean) {
 
 @Composable
 fun ContactSummaryCard(summary: ContactSummary, onClick: () -> Unit) {
-    Card(
-        modifier = Modifier.fillMaxWidth().clickable { onClick() },
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-        shape = RoundedCornerShape(16.dp)
-    ) {
+    AppCard(onClick = onClick) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Person, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
@@ -436,11 +420,7 @@ fun LoanDetailView(loanWithDetails: LoanWithDetails, viewModel: MainViewModel, o
                 item { EmptyState("尚無還款紀錄") }
             } else {
                 items(loanWithDetails.repayments.sortedByDescending { it.dateMillis }, key = { it.id }) { repayment ->
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
+                    AppCard {
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(start = 16.dp, top = 8.dp, bottom = 8.dp, end = 4.dp),
                             verticalAlignment = Alignment.CenterVertically
@@ -595,12 +575,12 @@ fun AddLoanDialog(
                     FilterChip(
                         selected = selectedType == LoanType.LEND,
                         onClick = { selectedType = LoanType.LEND },
-                        label = { Text("借出 (我借別人)") }
+                        label = { Text("借出") }
                     )
                     FilterChip(
                         selected = selectedType == LoanType.BORROW,
                         onClick = { selectedType = LoanType.BORROW },
-                        label = { Text("借入 (我向人借)") }
+                        label = { Text("借入") }
                     )
                 }
 

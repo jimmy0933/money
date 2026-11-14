@@ -43,7 +43,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             MoneyTrackerTheme {
-                Surface(modifier = Modifier.fillMaxSize()) {
+                Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     MainAppLayout(viewModel = viewModel)
                 }
             }
@@ -66,8 +66,9 @@ fun MainAppLayout(viewModel: MainViewModel) {
     }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
-            NavigationBar {
+            NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                 val navBackStackEntry by navController.currentBackStackEntryAsState()
                 val currentRoute = navBackStackEntry?.destination?.route
 

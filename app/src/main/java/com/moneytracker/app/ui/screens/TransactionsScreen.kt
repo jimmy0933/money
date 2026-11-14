@@ -12,6 +12,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
@@ -74,8 +77,9 @@ fun TransactionsScreen(viewModel: MainViewModel) {
     var searchQuery by remember { mutableStateOf("") }
     var selectedTypeFilter by remember { mutableStateOf<TransactionType?>(null) }
     var showAddDialog by remember { mutableStateOf(false) }
+    var txToDelete by remember { mutableStateOf<Long?>(null) }
 
-    val dateFormat = SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.TAIWAN)
+    val dateFormat = remember { SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.TAIWAN) }
 
     val filteredTransactions = transactions.filter { tx ->
         val matchesQuery = searchQuery.isBlank() || tx.note.contains(searchQuery, ignoreCase = true)
@@ -83,30 +87,25 @@ fun TransactionsScreen(viewModel: MainViewModel) {
         matchesQuery && matchesType
     }
 
-    var txToDelete by remember { mutableStateOf<Long?>(null) }
-
     Scaffold(
+        containerColor = Color.Transparent,
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
         floatingActionButton = {
             androidx.compose.material3.ExtendedFloatingActionButton(
                 onClick = { showAddDialog = true },
                 icon = { Icon(Icons.Default.Add, contentDescription = null) },
-                text = { Text("新增記帳") }
+                text = { Text("記一筆") }
             )
         }
     ) { paddingValues ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .padding(16.dp)
-        ) {
-            // 搜尋與篩選
+        Column(modifier = Modifier.fillMaxSize().padding(paddingValues).padding(horizontal = 16.dp)) {
+            com.moneytracker.app.ui.components.ScreenHeader("記帳")
+
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
                 modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("搜尋備註關鍵字...") },
+                placeholder = { Text("搜尋備註") },
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                 singleLine = true,
                 shape = RoundedCornerShape(50)
@@ -118,35 +117,16 @@ fun TransactionsScreen(viewModel: MainViewModel) {
                 modifier = Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                androidx.compose.material3.FilterChip(
-                    selected = selectedTypeFilter == null,
-                    onClick = { selectedTypeFilter = null },
-                    label = { Text("全部") }
-                )
-                androidx.compose.material3.FilterChip(
-                    selected = selectedTypeFilter == TransactionType.EXPENSE,
-                    onClick = { selectedTypeFilter = TransactionType.EXPENSE },
-                    label = { Text("支出") }
-                )
-                androidx.compose.material3.FilterChip(
-                    selected = selectedTypeFilter == TransactionType.INCOME,
-                    onClick = { selectedTypeFilter = TransactionType.INCOME },
-                    label = { Text("收入") }
-                )
-                androidx.compose.material3.FilterChip(
-                    selected = selectedTypeFilter == TransactionType.TRANSFER,
-                    onClick = { selectedTypeFilter = TransactionType.TRANSFER },
-                    label = { Text("轉帳") }
-                )
+                androidx.compose.material3.FilterChip(selected = selectedTypeFilter == null, onClick = { selectedTypeFilter = null }, label = { Text("全部") })
+                androidx.compose.material3.FilterChip(selected = selectedTypeFilter == TransactionType.EXPENSE, onClick = { selectedTypeFilter = TransactionType.EXPENSE }, label = { Text("支出") })
+                androidx.compose.material3.FilterChip(selected = selectedTypeFilter == TransactionType.INCOME, onClick = { selectedTypeFilter = TransactionType.INCOME }, label = { Text("收入") })
+                androidx.compose.material3.FilterChip(selected = selectedTypeFilter == TransactionType.TRANSFER, onClick = { selectedTypeFilter = TransactionType.TRANSFER }, label = { Text("轉帳") })
             }
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // 交易列表
             if (filteredTransactions.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("查無符合紀錄", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+                com.moneytracker.app.ui.components.EmptyState("查無符合紀錄")
             } else {
                 LazyColumn(
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = com.moneytracker.app.ui.components.ListBottomPadding),
@@ -157,82 +137,47 @@ fun TransactionsScreen(viewModel: MainViewModel) {
                         val account = accounts.find { it.id == tx.sourceAccountId }
                         val targetAccount = accounts.find { it.id == tx.targetAccountId }
 
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                            shape = RoundedCornerShape(16.dp),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(12.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(
-                                            text = category?.name ?: tx.type.label,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 16.sp,
-                                            maxLines = 1,
-                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                            modifier = Modifier.weight(1f, fill = false)
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text(
-                                            text = account?.name ?: "帳戶",
-                                            fontSize = 12.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                        if (tx.type == TransactionType.TRANSFER && targetAccount != null) {
-                                            Text(
-                                                text = " ➔ ${targetAccount.name}",
-                                                fontSize = 12.sp,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-                                    }
-                                    if (tx.note.isNotBlank()) {
-                                        Text(text = tx.note, fontSize = 13.sp)
-                                    }
-                                    Text(
-                                        text = dateFormat.format(Date(tx.dateMillis)),
-                                        fontSize = 11.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
+                        val color = when (tx.type) {
+                            TransactionType.INCOME -> MaterialTheme.colorScheme.primary
+                            TransactionType.EXPENSE -> MaterialTheme.colorScheme.error
+                            TransactionType.TRANSFER -> MaterialTheme.colorScheme.onSurfaceVariant
+                        }
+                        val icon = when (tx.type) {
+                            TransactionType.INCOME -> Icons.Default.ArrowUpward
+                            TransactionType.EXPENSE -> Icons.Default.ArrowDownward
+                            TransactionType.TRANSFER -> Icons.Default.SwapHoriz
+                        }
+                        val prefix = when (tx.type) {
+                            TransactionType.INCOME -> "+"
+                            TransactionType.EXPENSE -> "-"
+                            TransactionType.TRANSFER -> ""
+                        }
+                        val accountText = if (tx.type == TransactionType.TRANSFER && targetAccount != null) {
+                            "${account?.name ?: "帳戶"} → ${targetAccount.name}"
+                        } else {
+                            account?.name ?: "帳戶"
+                        }
+                        val isLoanFlow = tx.loanId != null || tx.repaymentId != null
 
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    val color = when (tx.type) {
-                                        TransactionType.INCOME -> MaterialTheme.colorScheme.primary
-                                        TransactionType.EXPENSE -> MaterialTheme.colorScheme.error
-                                        TransactionType.TRANSFER -> Color.DarkGray
-                                    }
-                                    val prefix = when (tx.type) {
-                                        TransactionType.INCOME -> "+"
-                                        TransactionType.EXPENSE -> "-"
-                                        TransactionType.TRANSFER -> ""
-                                    }
-                                    val formattedAmount = java.text.NumberFormat.getNumberInstance(java.util.Locale.US).format(tx.amount)
-                                    Text(
-                                        text = "$prefix NT$ $formattedAmount",
-                                        fontWeight = FontWeight.Bold,
-                                        color = color,
-                                        fontSize = 16.sp
-                                    )
-                                    if (tx.loanId == null && tx.repaymentId == null) {
+                        com.moneytracker.app.ui.components.AppCard {
+                            com.moneytracker.app.ui.components.TransactionRow(
+                                icon = icon,
+                                title = tx.note.ifBlank { category?.name ?: tx.type.label },
+                                subtitle = listOfNotNull(category?.name, accountText, dateFormat.format(Date(tx.dateMillis))).joinToString(" · "),
+                                amountText = "$prefix${com.moneytracker.app.ui.components.formatMoney(tx.amount)}",
+                                amountColor = color,
+                                trailing = {
+                                    if (!isLoanFlow) {
                                         IconButton(onClick = { txToDelete = tx.id }) {
                                             Icon(Icons.Default.Delete, contentDescription = "刪除", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                                         }
                                     } else {
-                                        IconButton(onClick = { viewModel.setUiMessage("借貸金流請至借貸管理頁面修改") }) {
-                                            Icon(Icons.Default.Info, contentDescription = "無法直接刪除", tint = MaterialTheme.colorScheme.outline)
+                                        IconButton(onClick = { viewModel.setUiMessage("借貸金流請至借貸頁面修改") }) {
+                                            Icon(Icons.Default.Info, contentDescription = "借貸金流", tint = MaterialTheme.colorScheme.outline)
                                         }
                                     }
                                 }
-                            }
+                            )
                         }
                     }
                 }
@@ -251,10 +196,7 @@ fun TransactionsScreen(viewModel: MainViewModel) {
     }
 
     if (showAddDialog) {
-        AddTransactionDialog(
-            viewModel = viewModel,
-            onDismiss = { showAddDialog = false }
-        )
+        AddTransactionDialog(viewModel = viewModel, onDismiss = { showAddDialog = false })
     }
 }
 
